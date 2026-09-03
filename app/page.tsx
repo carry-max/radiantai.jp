@@ -89,7 +89,7 @@ type HistoryEntry = {
 
 const HISTORY_KEY = "radiant-review-web-history-v1";
 const MAX_VOD_SECONDS = 60 * 60;
-const CAPTURE_OFFSETS = [-18, -12, -7, -3, 0];
+const CAPTURE_OFFSETS = [-20, -12, -6, 0, 5];
 const TAGS = ["先落ち", "トレード不可", "スキル残し", "不要ピーク", "人数有利", "タイミング", "クロスヘア"];
 const MAPS = ["Ascent", "Abyss", "Bind", "Breeze", "Corrode", "Fracture", "Haven", "Icebox", "Lotus", "Pearl", "Split", "Sunset"];
 
@@ -102,6 +102,11 @@ function formatTime(seconds: number) {
   return hours
     ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
     : `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function frameLabel(offset: number) {
+  if (offset === 0) return "デス時点";
+  return offset < 0 ? `デス${Math.abs(offset)}秒前` : `デス${offset}秒後`;
 }
 
 function isVideoFile(file: File) {
@@ -192,10 +197,11 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resultRef = useRef<HTMLElement>(null);
   const objectUrlRef = useRef<string | null>(null);
+  const reviewEndRef = useRef<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
-  const [model, setModel] = useState("gpt-5.4-mini");
+  const [model, setModel] = useState("gpt-5.6-luna");
   const [fileName, setFileName] = useState("");
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -206,6 +212,7 @@ export default function Home() {
   const [deathTimestamp, setDeathTimestamp] = useState(0);
   const [captureProgress, setCaptureProgress] = useState(0);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isReviewPlaying, setIsReviewPlaying] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [status, setStatus] = useState({ message: "録画を選ぶとレビューを開始できます。", tone: "neutral" as "neutral" | "success" | "error" });
   const [map, setMap] = useState("");
@@ -275,6 +282,8 @@ export default function Home() {
     setVideoTooLong(false);
     setFrames([]);
     setReview(null);
+    reviewEndRef.current = null;
+    setIsReviewPlaying(false);
     setCaptureProgress(0);
     setStatus({ message: "録画の情報を読み込んでいます…", tone: "neutral" });
     if (videoRef.current) { videoRef.current.src = url; videoRef.current.load(); }
@@ -302,7 +311,7 @@ export default function Home() {
         await waitForSeek(video, item.time);
         captured.push({
           time: item.time,
-          label: item.offset === 0 ? "デス時点" : `デス${Math.abs(item.offset)}秒前`,
+          label: frameLabel(Math.round(item.time - markedAt)),
           dataUrl: frameDataUrl(video),
         });
         setCaptureProgress(Math.round(((index + 1) / targets.length) * 100));
@@ -310,7 +319,7 @@ export default function Home() {
       setFrames(captured);
       setDeathTimestamp(markedAt);
       await waitForSeek(video, markedAt);
-      setStatus({ message: `${captured.length}枚を取得しました。試合情報を足して解析できます。`, tone: "success" });
+      setStatus({ message: `${captured.length}枚を取得しました。25秒を確認してから解析できます。`, tone: "success" });
     } catch (error) {
       setStatus({ message: error instanceof Error ? error.message : "フレーム取得に失敗しました。", tone: "error" });
     } finally {
@@ -321,7 +330,7 @@ export default function Home() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const tag = (document.activeElement?.tagName || "").toUpperCase();
-      if (event.key.toLowerCase() === "m" && !["INPUT", "TEXTAREA", "SELECT"].includes(tag)) {
+      if (event.key.toLowerCase() === "d" && !["INPUT", "TEXTAREA", "SELECT"].includes(tag)) {
         event.preventDefault();
         void captureFrames();
       }
@@ -329,6 +338,23 @@ export default function Home() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [captureFrames]);
+
+  const playReviewWindow = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video || frames.length < 2 || !duration) return;
+    const start = Math.max(0, deathTimestamp - 20);
+    reviewEndRef.current = Math.min(duration, deathTimestamp + 5);
+    video.currentTime = start;
+    setIsReviewPlaying(true);
+    try {
+      await video.play();
+      setStatus({ message: "デス前20秒からデス後5秒まで再生しています。", tone: "neutral" });
+    } catch {
+      reviewEndRef.current = null;
+      setIsReviewPlaying(false);
+      setStatus({ message: "再生を開始できませんでした。動画の再生ボタンをお試しください。", tone: "error" });
+    }
+  }, [deathTimestamp, duration, frames.length]);
 
   const finishReview = useCallback((nextReview: Review, usedModel: string, message: string) => {
     setReview(nextReview);
@@ -425,7 +451,7 @@ export default function Home() {
           <div>
             <p className="eyebrow">BROWSER PROTOTYPE 0.1</p>
             <h1 id="page-title">1デスを、次のラウンドの武器に。</h1>
-            <p className="intro-copy">60分の録画でも、選んだデス前後だけを端末内で切り出してレビューします。</p>
+            <p className="intro-copy">60分の録画でも、デス前20秒〜デス後5秒だけを端末内で切り出してレビューします。</p>
           </div>
           <div className="capability-row" aria-label="対応範囲">
             <span><Clock3 /> 最大60分</span><span><MonitorUp /> 1080p / 60fps</span><span><Film /> MP4・WebM・MOV</span>
@@ -435,7 +461,7 @@ export default function Home() {
         <section className="pipeline" aria-label="処理の流れ">
           <div><span className="pipeline-icon"><Play /></span><p><small>01 / LOCAL</small><strong>録画を再生</strong></p></div>
           <div><span className="pipeline-icon"><Crosshair /></span><p><small>02 / CAPTURE</small><strong>デス地点を記録</strong></p></div>
-          <div><span className="pipeline-icon"><BrainCircuit /></span><p><small>03 / REVIEW</small><strong>5枚だけAI解析</strong></p></div>
+          <div><span className="pipeline-icon"><BrainCircuit /></span><p><small>03 / REVIEW</small><strong>前20秒〜後5秒を解析</strong></p></div>
           <aside><Zap /> 動画全体は送信しません</aside>
         </section>
 
@@ -455,7 +481,23 @@ export default function Home() {
               >
                 <video
                   ref={videoRef} controls preload="metadata"
-                  onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+                  onTimeUpdate={(event) => {
+                    const video = event.currentTarget;
+                    setCurrentTime(video.currentTime);
+                    if (reviewEndRef.current !== null && video.currentTime >= reviewEndRef.current - 0.05) {
+                      reviewEndRef.current = null;
+                      video.pause();
+                      video.currentTime = deathTimestamp;
+                      setIsReviewPlaying(false);
+                      setStatus({ message: "25秒の確認が終わりました。気になった点を選んで解析できます。", tone: "success" });
+                    }
+                  }}
+                  onPause={() => {
+                    if (reviewEndRef.current !== null) {
+                      reviewEndRef.current = null;
+                      setIsReviewPlaying(false);
+                    }
+                  }}
                   onLoadedMetadata={(event) => {
                     const nextDuration = event.currentTarget.duration;
                     setDuration(nextDuration);
@@ -480,9 +522,17 @@ export default function Home() {
                 <Button type="button" size="lg" disabled={!videoReady || videoTooLong || isCapturing} onClick={() => void captureFrames()} className="capture-button">
                   {isCapturing ? <LoaderCircle className="spin" /> : <Crosshair />}{isCapturing ? "切り出し中…" : "この時刻をデス地点として記録"}
                 </Button>
-                <p>デス直後で停止して押す <kbd>M</kbd></p>
+                <p>デス直後で停止して押す <kbd>D</kbd></p>
               </div>
               {isCapturing ? <div className="capture-progress"><Progress value={captureProgress} /><span>{captureProgress}%</span></div> : null}
+              {reviewReady ? (
+                <div className="review-window-row">
+                  <Button type="button" variant="outline" disabled={isCapturing || isReviewPlaying} onClick={() => void playReviewWindow()}>
+                    <Play /> {isReviewPlaying ? "25秒を再生中…" : "デス前20秒〜後5秒を再生"}
+                  </Button>
+                  <span>登録時刻 {formatTime(deathTimestamp)}</span>
+                </div>
+              ) : null}
             </section>
 
             <section className="panel frames-panel">
@@ -496,7 +546,7 @@ export default function Home() {
                     </figure>
                   ))}
                 </div>
-              ) : <div className="empty-frames"><Target /><div><strong>まだ場面がありません</strong><span>デス地点を登録すると、18秒前から5枚並びます。</span></div></div>}
+              ) : <div className="empty-frames"><Target /><div><strong>まだ場面がありません</strong><span>Dキーでデス地点を登録すると、前20秒〜後5秒の5枚が並びます。</span></div></div>}
             </section>
           </div>
 
@@ -569,7 +619,7 @@ export default function Home() {
             <label htmlFor="apiKey"><span>OpenAI APIキー</span></label>
             <div className="key-field"><KeyRound /><Input id="apiKey" type={showKey ? "text" : "password"} value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk-..." autoComplete="off" spellCheck={false} /><Button type="button" variant="ghost" size="icon-sm" aria-label={showKey ? "APIキーを隠す" : "APIキーを表示"} onClick={() => setShowKey((current) => !current)}>{showKey ? <EyeOff /> : <Eye />}</Button></div>
             <label htmlFor="model"><span>解析モデル</span></label>
-            <NativeSelect id="model" value={model} onChange={(event) => setModel(event.target.value)}><NativeSelectOption value="gpt-5.4-mini">GPT-5.4 Mini（推奨・低コスト）</NativeSelectOption><NativeSelectOption value="gpt-5.6">GPT-5.6（高精度）</NativeSelectOption></NativeSelect>
+            <NativeSelect id="model" value={model} onChange={(event) => setModel(event.target.value)}><NativeSelectOption value="gpt-5.6-luna">GPT-5.6 Luna（推奨・低コスト）</NativeSelectOption><NativeSelectOption value="gpt-5.6-sol">GPT-5.6 Sol（高精度）</NativeSelectOption></NativeSelect>
           </div>
           <div className="privacy-box"><ShieldCheck /><div><strong>送信するのは最大5枚</strong><p>動画ファイル全体は送らず、切り出した圧縮画像・試合情報・APIキーだけを解析時に送ります。</p></div></div>
           <div className="dialog-actions"><Button type="button" variant="outline" onClick={() => { setApiKey(""); setShowKey(false); }}><RotateCcw /> キーを消去</Button><Button type="button" onClick={() => setSettingsOpen(false)}>設定を閉じる</Button></div>

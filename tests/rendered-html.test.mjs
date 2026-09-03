@@ -34,6 +34,8 @@ test("renders development preview metadata", async () => {
   assert.match(html, /RADIANT REVIEW/);
   assert.match(html, /最大60分/);
   assert.match(html, /動画は端末内で処理/);
+  assert.match(html, /前20秒〜後5秒/);
+  assert.match(html, /<kbd>D<\/kbd>/);
 
   const invalidAnalyzeResponse = await worker.fetch(
     new Request("http://localhost/api/analyze", {

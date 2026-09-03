@@ -1,5 +1,5 @@
 const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
-const ALLOWED_MODELS = new Set(["gpt-5.4-mini", "gpt-5.6"]);
+const ALLOWED_MODELS = new Set(["gpt-5.6-luna", "gpt-5.6-sol"]);
 
 const REVIEW_SCHEMA = {
   type: "object",
@@ -50,9 +50,10 @@ const REVIEW_SCHEMA = {
 };
 
 const COACH_INSTRUCTIONS = `あなたは高ランク帯VALORANT専門のVODコーチです。
-入力は、ユーザーが死亡した時刻までの時系列スクリーンショットです。
+入力は、ユーザーの死亡前20秒から死亡後5秒までの時系列スクリーンショットです。
 画面に写る事実と推測を分け、見えない情報を断定しないでください。
 音声、正確なエイム軌道、フレーム間の出来事は確認できないため、必要なら不確実性に明記してください。
+死亡後のフレームは、味方のトレード可否やキルフィードなど、画面で確認できる結果だけの補助材料にしてください。
 K/Dではなく、再現性のある判断改善を重視してください。
 回答は日本語で簡潔にし、次の1試合で意識する課題は必ず1つに絞ってください。
 イニシエーターなら、索敵、味方との同期、スキルを持ったままの死亡を特に確認してください。
@@ -166,7 +167,7 @@ export async function POST(request: Request) {
 
     const body = await request.json() as AnalyzeBody;
     const apiKey = cleanText(body.apiKey, 300);
-    const model = cleanText(body.model, 60) || "gpt-5.4-mini";
+    const model = cleanText(body.model, 60) || "gpt-5.6-luna";
     if (!apiKey) throw new RequestError("OpenAI APIキーを入力してください。");
     if (!ALLOWED_MODELS.has(model)) throw new RequestError("選択されたモデルは利用できません。");
     const frames = cleanFrames(body.frames);
@@ -174,7 +175,7 @@ export async function POST(request: Request) {
 
     const content: Array<Record<string, unknown>> = [{
       type: "input_text",
-      text: `以下はデス直前からデス時点まで、順番に並んだフレームです。画面で確認できる内容だけを根拠にレビューしてください。\n試合情報: ${JSON.stringify(metadata)}`,
+      text: `以下はデス前20秒からデス後5秒まで、順番に並んだフレームです。画面で確認できる内容だけを根拠にレビューしてください。\n試合情報: ${JSON.stringify(metadata)}`,
     }];
     for (const frame of frames) {
       content.push({ type: "input_text", text: frame.label });
