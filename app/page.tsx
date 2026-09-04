@@ -7,8 +7,10 @@ import {
   AlertTriangle,
   BarChart3,
   BrainCircuit,
+  CalendarDays,
   CheckCircle2,
   Clock3,
+  CreditCard,
   Crosshair,
   Download,
   Eye,
@@ -20,6 +22,7 @@ import {
   MapPinned,
   MonitorUp,
   Play,
+  QrCode,
   RotateCcw,
   ScanLine,
   Settings2,
@@ -31,6 +34,7 @@ import {
   Trash2,
   UploadCloud,
   UsersRound,
+  Wallet,
   Zap,
 } from "lucide-react";
 import {
@@ -101,6 +105,16 @@ type HistoryEntry = {
   deathSource?: "auto" | "manual";
   metadata: MatchContext;
   review: Review;
+};
+
+type BillingPlan = "card_monthly" | "paypay_30day";
+
+type BillingEntitlement = {
+  plan: BillingPlan;
+  status: "active" | "inactive";
+  startsAt: string;
+  endsAt: string;
+  remainingDays: number;
 };
 
 const HISTORY_KEY = "radiant-review-web-history-v1";
@@ -240,6 +254,12 @@ export default function Home() {
   const scanRunRef = useRef(0);
   const autoScannedUrlRef = useRef<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pricingOpen, setPricingOpen] = useState(false);
+  const [billingConfigured, setBillingConfigured] = useState(false);
+  const [billingLoaded, setBillingLoaded] = useState(false);
+  const [checkoutPlan, setCheckoutPlan] = useState<BillingPlan | null>(null);
+  const [entitlement, setEntitlement] = useState<BillingEntitlement | null>(null);
+  const [billingNotice, setBillingNotice] = useState<{ message: string; tone: "neutral" | "success" | "error" } | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [model, setModel] = useState("gpt-5.6-luna");
@@ -286,6 +306,62 @@ export default function Home() {
       scanRunRef.current += 1;
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadBilling = async () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const checkoutState = params.get("checkout");
+        const sessionId = params.get("session_id");
+        if (checkoutState === "success" && sessionId) {
+          setPricingOpen(true);
+          setBillingNotice({ message: "支払い結果を確認しています…", tone: "neutral" });
+          const response = await fetch("/api/billing/confirm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId }),
+          });
+          const result = (await response.json()) as { state?: string; entitlement?: BillingEntitlement | null; error?: string };
+          if (!response.ok && response.status !== 202) throw new Error(result.error || "支払い結果を確認できませんでした。");
+          if (active) {
+            setEntitlement(result.entitlement || null);
+            setBillingNotice(result.state === "processing"
+              ? { message: "PayPayの支払い処理中です。完了後に自動で利用可能になります。", tone: "neutral" }
+              : { message: "支払いを確認しました。Climbの利用期間を反映しました。", tone: "success" });
+          }
+        } else if (checkoutState === "cancelled") {
+          setPricingOpen(true);
+          setBillingNotice({ message: "購入はキャンセルされました。料金は発生していません。", tone: "neutral" });
+        }
+
+        if (checkoutState) {
+          params.delete("checkout");
+          params.delete("session_id");
+          const query = params.toString();
+          window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+        }
+
+        const response = await fetch("/api/billing/status", { cache: "no-store" });
+        const result = (await response.json()) as { configured?: boolean; entitlement?: BillingEntitlement | null };
+        if (active) {
+          setBillingConfigured(Boolean(result.configured));
+          if (result.entitlement) setEntitlement(result.entitlement);
+        }
+      } catch (error) {
+        if (active) {
+          setBillingNotice({
+            message: error instanceof Error ? error.message : "利用状況を確認できませんでした。",
+            tone: "error",
+          });
+        }
+      } finally {
+        if (active) setBillingLoaded(true);
+      }
+    };
+    void loadBilling();
+    return () => { active = false; };
   }, []);
 
   const matchContext = useMemo<MatchContext>(() => ({
@@ -734,6 +810,30 @@ export default function Home() {
 
   const reviewReady = frames.length >= 2;
 
+  const startCheckout = async (plan: BillingPlan) => {
+    setCheckoutPlan(plan);
+    setBillingNotice(null);
+    try {
+      const response = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan }),
+      });
+      const result = (await response.json()) as { url?: string; error?: string; code?: string };
+      if (!response.ok || !result.url) {
+        if (result.code === "billing_not_configured") setBillingConfigured(false);
+        throw new Error(result.error || "決済画面を開けませんでした。");
+      }
+      window.location.assign(result.url);
+    } catch (error) {
+      setBillingNotice({
+        message: error instanceof Error ? error.message : "決済画面を開けませんでした。",
+        tone: "error",
+      });
+      setCheckoutPlan(null);
+    }
+  };
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -743,6 +843,7 @@ export default function Home() {
         </a>
         <div className="top-actions">
           <span className="local-state"><ShieldCheck aria-hidden="true" /> 動画は端末内で処理</span>
+          <Button type="button" variant="outline" onClick={() => setPricingOpen(true)} className="top-pricing"><Wallet /> {entitlement?.status === "active" ? `残り${entitlement.remainingDays}日` : "料金・PayPay"}</Button>
           <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)} className="top-settings"><Settings2 /> AI設定</Button>
         </div>
       </header>
@@ -757,6 +858,15 @@ export default function Home() {
           <div className="capability-row" aria-label="対応範囲">
             <span><Clock3 /> 最大60分</span><span><MonitorUp /> 1080p / 60fps</span><span><Film /> MP4・WebM・MOV</span>
           </div>
+        </section>
+
+        <section className="plan-banner" aria-label="Climb料金プラン">
+          <div className="plan-banner-copy">
+            <span className="plan-emblem"><QrCode /></span>
+            <div><p><Badge>CLIMB</Badge> PAYPAY QR対応</p><strong>税込900円でAI解析5試合</strong><span>30日パスなら自動更新なし。1試合あたり180円相当。</span></div>
+          </div>
+          <div className="plan-banner-price"><small>税込</small><strong>¥900</strong><span>/ 30日</span></div>
+          <Button type="button" onClick={() => setPricingOpen(true)}>料金と支払い方法を見る</Button>
         </section>
 
         <section className="pipeline" aria-label="処理の流れ">
@@ -1000,6 +1110,46 @@ export default function Home() {
 
         <footer><span><ShieldCheck /> 試合後レビュー専用</span><p>ゲームへの接続・操作・リアルタイム情報の取得は行いません。AIの提案はVOD確認と組み合わせて判断してください。</p></footer>
       </main>
+
+      <Dialog open={pricingOpen} onOpenChange={setPricingOpen}>
+        <DialogContent className="pricing-dialog">
+          <DialogHeader>
+            <p className="eyebrow">CLIMB ACCESS</p>
+            <DialogTitle>税込900円、支払い方だけ選べます</DialogTitle>
+            <DialogDescription>どちらもAI解析5試合分（1試合あたり180円相当）。複数試合比較・苦手マップ／エージェント・デス原因・過去比較は全ユーザーが利用できます。</DialogDescription>
+          </DialogHeader>
+
+          {entitlement?.status === "active" ? (
+            <div className="active-pass"><CheckCircle2 /><div><strong>{entitlement.plan === "paypay_30day" ? "PayPay 30日パス" : "カード月額プラン"} 利用中</strong><span>{new Intl.DateTimeFormat("ja-JP", { dateStyle: "long" }).format(new Date(entitlement.endsAt))}まで・残り{entitlement.remainingDays}日</span></div></div>
+          ) : null}
+
+          <div className="payment-grid">
+            <article className="payment-option recommended">
+              <div className="payment-option-head"><span className="payment-icon paypay"><QrCode /></span><div><Badge>おすすめ</Badge><h3>PayPay QR・30日パス</h3></div></div>
+              <div className="payment-price"><strong>¥900</strong><span>税込 / 1回</span></div>
+              <ul><li><CheckCircle2 />購入日から30日間利用可能</li><li><CheckCircle2 />自動更新なし</li><li><CheckCircle2 />継続するときだけ再購入</li><li><CheckCircle2 />PCはQR表示、スマホはPayPayへ移動</li></ul>
+              <Button type="button" size="lg" disabled={!billingLoaded || !billingConfigured || checkoutPlan !== null} onClick={() => void startCheckout("paypay_30day")}>
+                {checkoutPlan === "paypay_30day" ? <LoaderCircle className="spin" /> : <QrCode />}{checkoutPlan === "paypay_30day" ? "決済画面を準備中…" : "PayPayで30日パスを購入"}
+              </Button>
+              <p className="renewal-note"><CalendarDays />30日後に自動終了します。定期購入ではありません。</p>
+            </article>
+
+            <article className="payment-option">
+              <div className="payment-option-head"><span className="payment-icon"><CreditCard /></span><div><small>MONTHLY</small><h3>カード・月額プラン</h3></div></div>
+              <div className="payment-price"><strong>¥900</strong><span>税込 / 月</span></div>
+              <ul><li><CheckCircle2 />毎月自動更新</li><li><CheckCircle2 />いつでも解約可能</li><li><CheckCircle2 />解約後も契約期間末まで利用可能</li><li><CheckCircle2 />AI解析5試合分 / 月</li></ul>
+              <Button type="button" size="lg" variant="outline" disabled={!billingLoaded || !billingConfigured || checkoutPlan !== null} onClick={() => void startCheckout("card_monthly")}>
+                {checkoutPlan === "card_monthly" ? <LoaderCircle className="spin" /> : <CreditCard />}{checkoutPlan === "card_monthly" ? "決済画面を準備中…" : "カードで月額を始める"}
+              </Button>
+              <p className="renewal-note"><RotateCcw />解約操作をしない限り、毎月900円で更新されます。</p>
+            </article>
+          </div>
+
+          {!billingConfigured && billingLoaded ? <div className="billing-setup-note"><AlertTriangle /><div><strong>決済接続は準備中です</strong><p>料金表示と購入導線は完成済みです。Stripeの秘密鍵とPayPay利用申請を設定すると、ボタンが有効になります。</p></div></div> : null}
+          {billingNotice ? <div className={`billing-notice ${billingNotice.tone}`} role="status" aria-live="polite">{billingNotice.tone === "error" ? <AlertTriangle /> : billingNotice.tone === "success" ? <CheckCircle2 /> : <Clock3 />}<span>{billingNotice.message}</span></div> : null}
+          <p className="billing-fineprint">決済はStripeの画面で安全に行います。PayPayパスは返金条件を購入前に別途表示予定です。年額プランは返金条件の確定後に追加します。</p>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="settings-dialog">
