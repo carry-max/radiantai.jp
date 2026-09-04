@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Radiant Review | VALORANT VOD Coach",
   description:
-    "VALORANT録画のデス地点をブラウザ内で自動検出し、試合比較や苦手傾向まで整理するVODコーチ。",
+    "VALORANT録画のデス地点をブラウザ内で自動検出し、全ユーザーが試合比較や苦手傾向まで確認できるVODコーチ。",
   other: {
     "codex-preview": "development",
   },

@@ -36,10 +36,12 @@ test("renders development preview metadata", async () => {
   assert.match(html, /動画は端末内で処理/);
   assert.match(html, /前20秒〜後5秒/);
   assert.match(html, /デス地点を自動検出/);
-  assert.match(html, /追加API料金なし/);
+  assert.match(html, /追加API料金はありません/);
+  assert.match(html, /全ユーザー利用可/);
   assert.match(html, /複数試合比較/);
   assert.match(html, /苦手マップ・エージェント/);
   assert.match(html, /反省点の推移・過去比較/);
+  assert.doesNotMatch(html, /CLIMB/);
   assert.match(html, /<kbd>D<\/kbd>/);
 
   const invalidAnalyzeResponse = await worker.fetch(

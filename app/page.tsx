@@ -646,7 +646,7 @@ export default function Home() {
     await captureFramesAt(candidate.time, "auto");
   }, [captureFramesAt, isCapturing, isDetectingDeaths]);
 
-  const climbInsights = useMemo(() => {
+  const growthInsights = useMemo(() => {
     const severityValue = { low: 1, medium: 2, high: 3 } as const;
     const rankedDimension = (selector: (entry: HistoryEntry) => string) => {
       const groups = new Map<string, { count: number; total: number }>();
@@ -763,7 +763,7 @@ export default function Home() {
           <div><span className="pipeline-icon"><Play /></span><p><small>01 / LOCAL</small><strong>録画を選択</strong></p></div>
           <div><span className="pipeline-icon"><ScanLine /></span><p><small>02 / AUTO DETECT</small><strong>デスを自動検出</strong></p></div>
           <div><span className="pipeline-icon"><BrainCircuit /></span><p><small>03 / REVIEW</small><strong>前20秒〜後5秒を解析</strong></p></div>
-          <aside><Zap /> 自動検出は追加API料金なし</aside>
+          <aside><Zap /> 自動検出・成長分析は全ユーザー利用可</aside>
         </section>
 
         <div className="workspace-grid">
@@ -822,7 +822,7 @@ export default function Home() {
               <div className="auto-detect-card">
                 <div className="auto-detect-summary">
                   <span className="scan-icon"><ScanLine /></span>
-                  <div><span><Badge>CLIMB</Badge> ローカル検出</span><strong>デス地点を自動検出</strong><p>録画だけを高速走査します。動画の送信・追加API料金はありません。</p></div>
+                  <div><span><Badge>ALL USERS</Badge> 標準機能</span><strong>デス地点を自動検出</strong><p>録画だけを高速走査します。動画の送信・追加API料金はありません。</p></div>
                 </div>
                 <Button type="button" variant="outline" disabled={!videoReady || videoTooLong || isDetectingDeaths || isCapturing} onClick={() => void detectDeaths()}>
                   {isDetectingDeaths ? <LoaderCircle className="spin" /> : <ScanLine />}{isDetectingDeaths ? "検出中…" : deathCandidates.length ? "再検出" : "自動検出"}
@@ -941,19 +941,19 @@ export default function Home() {
           ) : <div className="empty-history"><History /><span>解析結果はこのブラウザに最大50件保存されます。</span></div>}
         </section>
 
-        <section className="panel climb-panel">
+        <section className="panel growth-panel">
           <SectionHeading
             step="06"
-            eyebrow="CLIMB INSIGHTS"
+            eyebrow="PLAYER INSIGHTS"
             title="成長ダッシュボード"
-            trailing={<Badge variant="outline" className="local-insight-badge"><ShieldCheck /> 追加API料金なし</Badge>}
+            trailing={<Badge variant="outline" className="local-insight-badge"><ShieldCheck /> 全ユーザー利用可</Badge>}
           />
-          <div className="climb-grid">
+          <div className="growth-grid">
             <article className="insight-card match-comparison">
-              <div className="insight-title"><BarChart3 /><div><small>MATCH COMPARISON</small><h3>複数試合比較</h3></div><Badge variant="outline">{climbInsights.matches.length}試合</Badge></div>
-              {climbInsights.matches.length ? (
+              <div className="insight-title"><BarChart3 /><div><small>MATCH COMPARISON</small><h3>複数試合比較</h3></div><Badge variant="outline">{growthInsights.matches.length}試合</Badge></div>
+              {growthInsights.matches.length ? (
                 <div className="match-compare-list">
-                  {climbInsights.matches.slice(0, 4).map((match) => (
+                  {growthInsights.matches.slice(0, 4).map((match) => (
                     <div key={`${match.createdAt}-${match.label}`}>
                       <time>{new Intl.DateTimeFormat("ja-JP", { month: "numeric", day: "numeric" }).format(new Date(match.createdAt))}</time>
                       <span><strong>{match.label}</strong><small>{match.entries.length}デス・最多 {match.topIssue}</small></span>
@@ -967,16 +967,16 @@ export default function Home() {
             <article className="insight-card weakness-card">
               <div className="insight-title"><MapPinned /><div><small>WEAKNESS</small><h3>苦手マップ・エージェント</h3></div></div>
               <div className="weakness-pairs">
-                <div><span><MapPinned /> 苦手マップ</span><strong>{climbInsights.weakMap?.label || "データ待ち"}</strong><small>{climbInsights.weakMap ? `${climbInsights.weakMap.count}件・負荷 ${climbInsights.weakMap.average.toFixed(1)}` : "マップを設定して解析"}</small></div>
-                <div><span><UsersRound /> 苦手エージェント</span><strong>{climbInsights.weakAgent?.label || "データ待ち"}</strong><small>{climbInsights.weakAgent ? `${climbInsights.weakAgent.count}件・負荷 ${climbInsights.weakAgent.average.toFixed(1)}` : "エージェントを設定して解析"}</small></div>
+                <div><span><MapPinned /> 苦手マップ</span><strong>{growthInsights.weakMap?.label || "データ待ち"}</strong><small>{growthInsights.weakMap ? `${growthInsights.weakMap.count}件・負荷 ${growthInsights.weakMap.average.toFixed(1)}` : "マップを設定して解析"}</small></div>
+                <div><span><UsersRound /> 苦手エージェント</span><strong>{growthInsights.weakAgent?.label || "データ待ち"}</strong><small>{growthInsights.weakAgent ? `${growthInsights.weakAgent.count}件・負荷 ${growthInsights.weakAgent.average.toFixed(1)}` : "エージェントを設定して解析"}</small></div>
               </div>
             </article>
 
             <article className="insight-card reason-card">
               <div className="insight-title"><Activity /><div><small>DEATH CAUSES</small><h3>デス原因</h3></div></div>
-              {climbInsights.reasons.length ? (
+              {growthInsights.reasons.length ? (
                 <div className="reason-list">
-                  {climbInsights.reasons.map((reason) => (
+                  {growthInsights.reasons.map((reason) => (
                     <div key={reason.label}><span><b>{reason.label}</b><small>{reason.count}件</small></span><i><em style={{ width: `${reason.percentage}%` }} /></i></div>
                   ))}
                 </div>
@@ -986,12 +986,12 @@ export default function Home() {
             <article className="insight-card trend-card">
               <div className="insight-title"><TrendingUp /><div><small>REVIEW TREND</small><h3>反省点の推移・過去比較</h3></div></div>
               <div className="trend-summary">
-                {climbInsights.trend === null ? <span className="trend-wait"><Activity /> 6件以上で直近5件と前5件を比較</span> : climbInsights.trend <= 0 ? <span className="trend-good"><TrendingDown /> 課題負荷が {Math.abs(climbInsights.trend).toFixed(1)} 改善</span> : <span className="trend-alert"><TrendingUp /> 課題負荷が {climbInsights.trend.toFixed(1)} 上昇</span>}
+                {growthInsights.trend === null ? <span className="trend-wait"><Activity /> 6件以上で直近5件と前5件を比較</span> : growthInsights.trend <= 0 ? <span className="trend-good"><TrendingDown /> 課題負荷が {Math.abs(growthInsights.trend).toFixed(1)} 改善</span> : <span className="trend-alert"><TrendingUp /> 課題負荷が {growthInsights.trend.toFixed(1)} 上昇</span>}
               </div>
-              {climbInsights.latest ? (
+              {growthInsights.latest ? (
                 <div className="report-compare">
-                  <div><small>今回</small><p>{climbInsights.latest.review.next_focus}</p></div>
-                  <div><small>過去</small><p>{climbInsights.comparable?.review.next_focus || "同条件の過去レポートはまだありません。"}</p></div>
+                  <div><small>今回</small><p>{growthInsights.latest.review.next_focus}</p></div>
+                  <div><small>過去</small><p>{growthInsights.comparable?.review.next_focus || "同条件の過去レポートはまだありません。"}</p></div>
                 </div>
               ) : <p className="insight-empty">レポートが増えると、以前の課題と今回の変化を比較できます。</p>}
             </article>
