@@ -1,7 +1,6 @@
 import {
-  CLIMB_ANALYSIS_CREDITS,
-  CLIMB_PRICE_YEN,
   type BillingPlan,
+  getBillingPlanDetails,
   PAYPAY_ACCESS_DAYS,
   stripeCheckoutConfigured,
   stripeRequest,
@@ -10,10 +9,6 @@ import { getSiteUser } from "@/lib/site-user";
 
 type CheckoutResponse = { id: string; url: string | null };
 
-function isBillingPlan(value: unknown): value is BillingPlan {
-  return value === "card_monthly" || value === "paypay_30day";
-}
-
 export async function POST(request: Request) {
   const user = getSiteUser(request);
   if (!user) {
@@ -21,7 +16,8 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => ({})) as { plan?: unknown };
-  if (!isBillingPlan(body.plan)) {
+  const planDetails = getBillingPlanDetails(body.plan);
+  if (!planDetails) {
     return Response.json({ error: "料金プランを選び直してください。" }, { status: 400 });
   }
   if (!stripeCheckoutConfigured()) {
@@ -31,8 +27,8 @@ export async function POST(request: Request) {
     }, { status: 503 });
   }
 
-  const plan = body.plan;
-  const payPay = plan === "paypay_30day";
+  const plan = body.plan as BillingPlan;
+  const payPay = planDetails.paymentMethod === "paypay";
   const origin = new URL(request.url).origin;
   const params = new URLSearchParams();
   params.set("mode", payPay ? "payment" : "subscription");
@@ -42,25 +38,28 @@ export async function POST(request: Request) {
   params.set("payment_method_types[0]", payPay ? "paypay" : "card");
   params.set("line_items[0][quantity]", "1");
   params.set("line_items[0][price_data][currency]", "jpy");
-  params.set("line_items[0][price_data][unit_amount]", String(CLIMB_PRICE_YEN));
+  params.set("line_items[0][price_data][unit_amount]", String(planDetails.priceYen));
   params.set("line_items[0][price_data][tax_behavior]", "inclusive");
-  params.set("line_items[0][price_data][product_data][name]", payPay
-    ? "Radiant Review Climb 30日パス"
-    : "Radiant Review Climb 月額プラン");
+  params.set("line_items[0][price_data][product_data][name]", planDetails.productName);
   params.set("line_items[0][price_data][product_data][description]", payPay
-    ? `AI解析${CLIMB_ANALYSIS_CREDITS}試合分・購入日から${PAYPAY_ACCESS_DAYS}日・自動更新なし`
-    : `AI解析${CLIMB_ANALYSIS_CREDITS}試合分・毎月自動更新・いつでも解約可能`);
+    ? `AI解析${planDetails.analysisCredits}試合分・購入日から${PAYPAY_ACCESS_DAYS}日・自動更新なし`
+    : `AI解析${planDetails.analysisCredits}試合分・毎月自動更新・いつでも解約可能`);
   if (!payPay) params.set("line_items[0][price_data][recurring][interval]", "month");
   params.set("metadata[user_id]", user.id);
   params.set("metadata[plan]", plan);
-  params.set("metadata[analysis_credits]", String(CLIMB_ANALYSIS_CREDITS));
+  params.set("metadata[tier]", planDetails.tier);
+  params.set("metadata[analysis_credits]", String(planDetails.analysisCredits));
   if (payPay) {
     params.set("metadata[access_days]", String(PAYPAY_ACCESS_DAYS));
     params.set("payment_intent_data[metadata][user_id]", user.id);
     params.set("payment_intent_data[metadata][plan]", plan);
+    params.set("payment_intent_data[metadata][tier]", planDetails.tier);
+    params.set("payment_intent_data[metadata][analysis_credits]", String(planDetails.analysisCredits));
   } else {
     params.set("subscription_data[metadata][user_id]", user.id);
     params.set("subscription_data[metadata][plan]", plan);
+    params.set("subscription_data[metadata][tier]", planDetails.tier);
+    params.set("subscription_data[metadata][analysis_credits]", String(planDetails.analysisCredits));
   }
   params.set("success_url", `${origin}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`);
   params.set("cancel_url", `${origin}/?checkout=cancelled`);

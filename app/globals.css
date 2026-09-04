@@ -509,9 +509,14 @@ footer p { margin: 0; text-align: right; }
 .active-pass > div { display: grid; gap: 3px; }
 .active-pass strong { color: #c8f2e5; font-size: 13px; }
 .active-pass span { color: #88a99f; font-size: 11px; }
+.payment-rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.payment-rules span { display: flex; align-items: center; gap: 7px; min-height: 38px; padding: 9px 11px; border: 1px solid #2f3948; background: #0a0f15; color: #7f8b9d; font-size: 11px; }
+.payment-rules svg { width: 15px; height: 15px; flex: 0 0 auto; color: var(--mint); }
+.payment-rules strong { color: #c3cbd5; font-weight: 700; }
 .payment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .payment-option { position: relative; display: flex; min-width: 0; flex-direction: column; padding: 17px; border: 1px solid #303a49; background: linear-gradient(145deg, #141a23, #0c1118); }
 .payment-option.recommended { border-color: rgba(120,230,194,.42); box-shadow: inset 0 2px 0 var(--mint); }
+.payment-option.climb-tier { background: linear-gradient(145deg, rgba(120,230,194,.09), #0e141b 46%, rgba(255,70,85,.055)); }
 .payment-option-head { display: flex; align-items: center; gap: 11px; min-height: 45px; }
 .payment-option-head > div { display: grid; gap: 3px; }
 .payment-option-head [data-slot="badge"] { width: fit-content; background: rgba(120,230,194,.13); color: var(--mint); font-size: 9px; }
@@ -523,13 +528,18 @@ footer p { margin: 0; text-align: right; }
 .payment-price { display: flex; align-items: baseline; gap: 8px; margin: 19px 0 13px; }
 .payment-price strong { font-family: var(--font-mono); font-size: 32px; letter-spacing: -.06em; }
 .payment-price span { color: #8490a1; font-size: 11px; }
-.payment-option ul { display: grid; gap: 9px; min-height: 124px; margin: 0 0 17px; padding: 0; list-style: none; }
-.payment-option li { display: flex; align-items: flex-start; gap: 7px; color: #adb6c1; font-size: 11px; line-height: 1.5; }
+.payment-option ul { display: grid; gap: 9px; min-height: 102px; margin: 0 0 17px; padding: 0; list-style: none; }
+.payment-option li { display: flex; align-items: flex-start; gap: 7px; color: #adb6c1; font-size: 12px; line-height: 1.5; }
 .payment-option li svg { width: 14px; height: 14px; flex: 0 0 auto; margin-top: 1px; color: var(--mint); }
-.payment-option > button { width: 100%; margin-top: auto; }
-.recommended > button { background: var(--signal); }
+.payment-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: auto; }
+.payment-actions button { width: 100%; min-width: 0; padding-inline: 10px; font-size: 12px; }
 .renewal-note { display: flex; align-items: flex-start; gap: 6px; min-height: 34px; margin: 10px 0 0; color: #707c8f; font-size: 10px; line-height: 1.55; }
 .renewal-note svg { width: 13px; height: 13px; flex: 0 0 auto; margin-top: 1px; }
+.renewal-terms { display: grid; gap: 7px; }
+.renewal-terms p { display: flex; align-items: flex-start; gap: 9px; margin: 0; padding: 10px 11px; border-left: 2px solid #3b4657; background: rgba(255,255,255,.025); color: #818c9d; font-size: 11px; line-height: 1.6; }
+.renewal-terms p:first-child { border-color: var(--mint); }
+.renewal-terms svg { width: 15px; height: 15px; flex: 0 0 auto; margin-top: 1px; color: #9ca7b6; }
+.renewal-terms strong { color: #c8d0da; }
 .billing-setup-note { display: flex; gap: 10px; padding: 12px 13px; border: 1px solid rgba(255,194,110,.28); background: rgba(255,194,110,.055); }
 .billing-setup-note > svg { width: 18px; height: 18px; flex: 0 0 auto; color: #ffc26e; }
 .billing-setup-note > div { display: grid; gap: 3px; }
@@ -610,6 +620,7 @@ footer p { margin: 0; text-align: right; }
   footer p { text-align: left; }
   .dialog-actions { align-items: stretch; flex-direction: column-reverse; }
   .payment-grid { grid-template-columns: 1fr; }
+  .payment-rules { grid-template-columns: 1fr; }
   .payment-option ul { min-height: 0; }
 }
 
@@ -630,6 +641,7 @@ footer p { margin: 0; text-align: right; }
   .weakness-pairs, .report-compare { grid-template-columns: 1fr; }
   .plan-emblem { width: 38px; height: 38px; }
   .plan-banner-copy strong { font-size: 13px; }
+  .payment-actions { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

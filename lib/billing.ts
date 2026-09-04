@@ -4,11 +4,64 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { billingEntitlements, billingPayments } from "@/db/schema";
 
-export const CLIMB_PRICE_YEN = 900;
-export const CLIMB_ANALYSIS_CREDITS = 5;
 export const PAYPAY_ACCESS_DAYS = 30;
 
-export type BillingPlan = "card_monthly" | "paypay_30day";
+export type BillingPlan =
+  | "card_monthly"
+  | "paypay_30day"
+  | "climb_card_monthly"
+  | "climb_paypay_30day";
+
+export type BillingTier = "review" | "climb";
+
+export type BillingPlanDetails = {
+  tier: BillingTier;
+  tierLabel: "Review" | "Climb";
+  paymentMethod: "card" | "paypay";
+  priceYen: number;
+  analysisCredits: number;
+  productName: string;
+};
+
+export const BILLING_PLAN_DETAILS: Record<BillingPlan, BillingPlanDetails> = {
+  card_monthly: {
+    tier: "review",
+    tierLabel: "Review",
+    paymentMethod: "card",
+    priceYen: 900,
+    analysisCredits: 5,
+    productName: "Radiant Review Review 月額プラン",
+  },
+  paypay_30day: {
+    tier: "review",
+    tierLabel: "Review",
+    paymentMethod: "paypay",
+    priceYen: 900,
+    analysisCredits: 5,
+    productName: "Radiant Review Review 30日パス",
+  },
+  climb_card_monthly: {
+    tier: "climb",
+    tierLabel: "Climb",
+    paymentMethod: "card",
+    priceYen: 1_800,
+    analysisCredits: 10,
+    productName: "Radiant Review Climb 月額プラン",
+  },
+  climb_paypay_30day: {
+    tier: "climb",
+    tierLabel: "Climb",
+    paymentMethod: "paypay",
+    priceYen: 1_800,
+    analysisCredits: 10,
+    productName: "Radiant Review Climb 30日パス",
+  },
+};
+
+export function getBillingPlanDetails(value: unknown) {
+  if (typeof value !== "string" || !(value in BILLING_PLAN_DETAILS)) return null;
+  return BILLING_PLAN_DETAILS[value as BillingPlan];
+}
 
 type RuntimeEnv = {
   STRIPE_SECRET_KEY?: string;
@@ -109,7 +162,7 @@ export async function getEntitlement(userId: string) {
 
 function sessionPlan(session: StripeCheckoutSession): BillingPlan | null {
   const value = session.metadata?.plan;
-  if (value === "card_monthly" || value === "paypay_30day") return value;
+  if (getBillingPlanDetails(value)) return value as BillingPlan;
   return session.mode === "subscription" ? "card_monthly" : null;
 }
 
@@ -123,6 +176,8 @@ export async function recordPaidCheckout(session: StripeCheckoutSession) {
   const userId = session.client_reference_id || session.metadata?.user_id || "";
   const plan = sessionPlan(session);
   if (!userId || !plan) throw new Error("INVALID_CHECKOUT_SESSION");
+  const planDetails = BILLING_PLAN_DETAILS[plan];
+  const payPay = planDetails.paymentMethod === "paypay";
   if (session.payment_status !== "paid" && session.payment_status !== "no_payment_required") {
     return { state: "processing" as const, entitlement: await getEntitlement(userId) };
   }
@@ -144,10 +199,10 @@ export async function recordPaidCheckout(session: StripeCheckoutSession) {
     .where(eq(billingEntitlements.userId, userId))
     .limit(1);
   const subscription = subscriptionFromSession(session);
-  const startsAt = plan === "paypay_30day"
+  const startsAt = payPay
     ? new Date(Math.max(now.getTime(), current?.status === "active" ? new Date(current.endsAt).getTime() : 0))
     : new Date((subscription?.current_period_start || session.created || Math.floor(now.getTime() / 1000)) * 1000);
-  const endsAt = plan === "paypay_30day"
+  const endsAt = payPay
     ? new Date(startsAt.getTime() + PAYPAY_ACCESS_DAYS * 86_400_000)
     : new Date((subscription?.current_period_end || Math.floor(now.getTime() / 1000) + 31 * 86_400) * 1000);
   const email = session.customer_details?.email || current?.email || "";
@@ -162,7 +217,7 @@ export async function recordPaidCheckout(session: StripeCheckoutSession) {
       userId,
       email,
       plan,
-      amountYen: CLIMB_PRICE_YEN,
+      amountYen: planDetails.priceYen,
       paidAt,
     }).onConflictDoNothing(),
     db.insert(billingEntitlements).values({

@@ -107,7 +107,11 @@ type HistoryEntry = {
   review: Review;
 };
 
-type BillingPlan = "card_monthly" | "paypay_30day";
+type BillingPlan =
+  | "card_monthly"
+  | "paypay_30day"
+  | "climb_card_monthly"
+  | "climb_paypay_30day";
 
 type BillingEntitlement = {
   plan: BillingPlan;
@@ -809,6 +813,8 @@ export default function Home() {
   }, [historyItems]);
 
   const reviewReady = frames.length >= 2;
+  const activeTier = entitlement?.plan.startsWith("climb_") ? "Climb" : "Review";
+  const activePayment = entitlement?.plan.includes("paypay") ? "PayPay 30日パス" : "カード月額";
 
   const startCheckout = async (plan: BillingPlan) => {
     setCheckoutPlan(plan);
@@ -863,9 +869,9 @@ export default function Home() {
         <section className="plan-banner" aria-label="Climb料金プラン">
           <div className="plan-banner-copy">
             <span className="plan-emblem"><QrCode /></span>
-            <div><p><Badge>CLIMB</Badge> PAYPAY QR対応</p><strong>税込900円でAI解析5試合</strong><span>30日パスなら自動更新なし。1試合あたり180円相当。</span></div>
+            <div><p><Badge>CLIMB</Badge> PAYPAY QR + STRIPE</p><strong>上位Climb：税込1,800円でAI解析10試合</strong><span>Reviewは900円・5試合。どちらも1試合あたり180円相当。PayPayは30日・自動更新なし。</span></div>
           </div>
-          <div className="plan-banner-price"><small>税込</small><strong>¥900</strong><span>/ 30日</span></div>
+          <div className="plan-banner-price"><small>税込</small><strong>¥1,800</strong><span>/ 30日・月</span></div>
           <Button type="button" onClick={() => setPricingOpen(true)}>料金と支払い方法を見る</Button>
         </section>
 
@@ -1114,40 +1120,54 @@ export default function Home() {
       <Dialog open={pricingOpen} onOpenChange={setPricingOpen}>
         <DialogContent className="pricing-dialog">
           <DialogHeader>
-            <p className="eyebrow">CLIMB ACCESS</p>
-            <DialogTitle>税込900円、支払い方だけ選べます</DialogTitle>
-            <DialogDescription>どちらもAI解析5試合分（1試合あたり180円相当）。複数試合比較・苦手マップ／エージェント・デス原因・過去比較は全ユーザーが利用できます。</DialogDescription>
+            <p className="eyebrow">REVIEW / CLIMB</p>
+            <DialogTitle>解析量に合わせて2つのプランから選べます</DialogTitle>
+            <DialogDescription>PayPay QRは30日間の一回払い、カードはStripe経由の月額自動更新です。複数試合比較・苦手マップ／エージェント・デス原因・過去比較は、プランに関係なく全ユーザーが利用できます。</DialogDescription>
           </DialogHeader>
 
           {entitlement?.status === "active" ? (
-            <div className="active-pass"><CheckCircle2 /><div><strong>{entitlement.plan === "paypay_30day" ? "PayPay 30日パス" : "カード月額プラン"} 利用中</strong><span>{new Intl.DateTimeFormat("ja-JP", { dateStyle: "long" }).format(new Date(entitlement.endsAt))}まで・残り{entitlement.remainingDays}日</span></div></div>
+            <div className="active-pass"><CheckCircle2 /><div><strong>{activeTier}・{activePayment}を利用中</strong><span>{new Intl.DateTimeFormat("ja-JP", { dateStyle: "long" }).format(new Date(entitlement.endsAt))}まで・残り{entitlement.remainingDays}日</span></div></div>
           ) : null}
 
+          <div className="payment-rules">
+            <span><QrCode /><strong>PayPay QR</strong> 30日パス・自動更新なし</span>
+            <span><CreditCard /><strong>カード（Stripe）</strong> 毎月自動更新</span>
+          </div>
+
           <div className="payment-grid">
-            <article className="payment-option recommended">
-              <div className="payment-option-head"><span className="payment-icon paypay"><QrCode /></span><div><Badge>おすすめ</Badge><h3>PayPay QR・30日パス</h3></div></div>
-              <div className="payment-price"><strong>¥900</strong><span>税込 / 1回</span></div>
-              <ul><li><CheckCircle2 />購入日から30日間利用可能</li><li><CheckCircle2 />自動更新なし</li><li><CheckCircle2 />継続するときだけ再購入</li><li><CheckCircle2 />PCはQR表示、スマホはPayPayへ移動</li></ul>
-              <Button type="button" size="lg" disabled={!billingLoaded || !billingConfigured || checkoutPlan !== null} onClick={() => void startCheckout("paypay_30day")}>
-                {checkoutPlan === "paypay_30day" ? <LoaderCircle className="spin" /> : <QrCode />}{checkoutPlan === "paypay_30day" ? "決済画面を準備中…" : "PayPayで30日パスを購入"}
-              </Button>
-              <p className="renewal-note"><CalendarDays />30日後に自動終了します。定期購入ではありません。</p>
+            <article className="payment-option review-tier">
+              <div className="payment-option-head"><span className="payment-icon"><Target /></span><div><small>STANDARD</small><h3>Review</h3></div></div>
+              <div className="payment-price"><strong>¥900</strong><span>税込 / 30日・月</span></div>
+              <ul><li><CheckCircle2 />AI解析5試合分</li><li><CheckCircle2 />1試合あたり180円相当</li><li><CheckCircle2 />まず少ない試合数で試したい人向け</li></ul>
+              <div className="payment-actions">
+                <Button type="button" size="lg" variant="outline" disabled={!billingLoaded || !billingConfigured || checkoutPlan !== null} onClick={() => void startCheckout("paypay_30day")}>
+                  {checkoutPlan === "paypay_30day" ? <LoaderCircle className="spin" /> : <QrCode />}{checkoutPlan === "paypay_30day" ? "準備中…" : "PayPay・30日"}
+                </Button>
+                <Button type="button" size="lg" variant="outline" disabled={!billingLoaded || !billingConfigured || checkoutPlan !== null} onClick={() => void startCheckout("card_monthly")}>
+                  {checkoutPlan === "card_monthly" ? <LoaderCircle className="spin" /> : <CreditCard />}{checkoutPlan === "card_monthly" ? "準備中…" : "カード・月額"}
+                </Button>
+              </div>
             </article>
 
-            <article className="payment-option">
-              <div className="payment-option-head"><span className="payment-icon"><CreditCard /></span><div><small>MONTHLY</small><h3>カード・月額プラン</h3></div></div>
-              <div className="payment-price"><strong>¥900</strong><span>税込 / 月</span></div>
-              <ul><li><CheckCircle2 />毎月自動更新</li><li><CheckCircle2 />いつでも解約可能</li><li><CheckCircle2 />解約後も契約期間末まで利用可能</li><li><CheckCircle2 />AI解析5試合分 / 月</li></ul>
-              <Button type="button" size="lg" variant="outline" disabled={!billingLoaded || !billingConfigured || checkoutPlan !== null} onClick={() => void startCheckout("card_monthly")}>
-                {checkoutPlan === "card_monthly" ? <LoaderCircle className="spin" /> : <CreditCard />}{checkoutPlan === "card_monthly" ? "決済画面を準備中…" : "カードで月額を始める"}
-              </Button>
-              <p className="renewal-note"><RotateCcw />解約操作をしない限り、毎月900円で更新されます。</p>
+            <article className="payment-option recommended climb-tier">
+              <div className="payment-option-head"><span className="payment-icon paypay"><TrendingUp /></span><div><Badge>上位プラン</Badge><h3>Climb</h3></div></div>
+              <div className="payment-price"><strong>¥1,800</strong><span>税込 / 30日・月</span></div>
+              <ul><li><CheckCircle2 />AI解析10試合分</li><li><CheckCircle2 />Reviewの2倍の解析枠</li><li><CheckCircle2 />継続して試合を見返す人向け</li></ul>
+              <div className="payment-actions">
+                <Button type="button" size="lg" disabled={!billingLoaded || !billingConfigured || checkoutPlan !== null} onClick={() => void startCheckout("climb_paypay_30day")}>
+                  {checkoutPlan === "climb_paypay_30day" ? <LoaderCircle className="spin" /> : <QrCode />}{checkoutPlan === "climb_paypay_30day" ? "準備中…" : "PayPay・30日"}
+                </Button>
+                <Button type="button" size="lg" variant="outline" disabled={!billingLoaded || !billingConfigured || checkoutPlan !== null} onClick={() => void startCheckout("climb_card_monthly")}>
+                  {checkoutPlan === "climb_card_monthly" ? <LoaderCircle className="spin" /> : <CreditCard />}{checkoutPlan === "climb_card_monthly" ? "準備中…" : "カード・月額"}
+                </Button>
+              </div>
             </article>
           </div>
 
+          <div className="renewal-terms"><p><CalendarDays /><span><strong>PayPay QR</strong> 購入日から30日間利用でき、30日後に自動終了します。継続する場合だけ再購入してください。</span></p><p><RotateCcw /><span><strong>カード月額</strong> 毎月自動更新されます。いつでも解約でき、解約後も契約期間末まで利用できます。</span></p></div>
           {!billingConfigured && billingLoaded ? <div className="billing-setup-note"><AlertTriangle /><div><strong>決済接続は準備中です</strong><p>料金表示と購入導線は完成済みです。Stripeの秘密鍵とPayPay利用申請を設定すると、ボタンが有効になります。</p></div></div> : null}
           {billingNotice ? <div className={`billing-notice ${billingNotice.tone}`} role="status" aria-live="polite">{billingNotice.tone === "error" ? <AlertTriangle /> : billingNotice.tone === "success" ? <CheckCircle2 /> : <Clock3 />}<span>{billingNotice.message}</span></div> : null}
-          <p className="billing-fineprint">決済はStripeの画面で安全に行います。PayPayパスは返金条件を購入前に別途表示予定です。年額プランは返金条件の確定後に追加します。</p>
+          <p className="billing-fineprint">PayPay QRとカード決済は、どちらもStripeの安全な決済画面で行います。年額Climbは返金条件の確定後に追加します。</p>
         </DialogContent>
       </Dialog>
 

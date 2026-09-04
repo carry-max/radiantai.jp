@@ -55,8 +55,10 @@ test("renders development preview metadata", async () => {
   assert.match(html, /苦手マップ・エージェント/);
   assert.match(html, /反省点の推移・過去比較/);
   assert.match(html, /CLIMB/);
-  assert.match(html, /PAYPAY QR対応/);
-  assert.match(html, /税込900円/);
+  assert.match(html, /PAYPAY QR \+ STRIPE/);
+  assert.match(html, /Reviewは900円・5試合/);
+  assert.match(html, /税込1,800円/);
+  assert.match(html, /AI解析10試合/);
   assert.match(html, /自動更新なし/);
   assert.match(html, /1試合あたり180円相当/);
   assert.match(html, /<kbd>D<\/kbd>/);
@@ -92,7 +94,7 @@ test("renders development preview metadata", async () => {
         "oai-authenticated-user-id": "test-user",
         "oai-authenticated-user-email": "test@example.com",
       },
-      body: JSON.stringify({ plan: "paypay_30day" }),
+      body: JSON.stringify({ plan: "climb_paypay_30day" }),
     }),
     {
       ASSETS: {
