@@ -5,6 +5,7 @@
 import {
   Activity,
   AlertTriangle,
+  Award,
   BarChart3,
   BrainCircuit,
   CalendarDays,
@@ -70,6 +71,14 @@ import {
 
 type Frame = { label: string; time: number; dataUrl: string };
 
+type MissionCheckStatus = "cleared" | "improving" | "not_cleared" | "insufficient" | "not_applicable";
+
+type MissionCheck = {
+  status: MissionCheckStatus;
+  evidence: string;
+  confidence: "low" | "medium" | "high";
+};
+
 type Review = {
   status: "ok" | "insufficient";
   headline: string;
@@ -81,6 +90,7 @@ type Review = {
   };
   improvements: string[];
   next_focus: string;
+  mission_check?: MissionCheck;
   confidence: "low" | "medium" | "high";
   uncertainty: string;
 };
@@ -107,6 +117,27 @@ type HistoryEntry = {
   review: Review;
 };
 
+type GrowthMission = {
+  id: string;
+  text: string;
+  createdAt: string;
+  sourceMatchId: string;
+  checkedMatchIds: string[];
+};
+
+type GrowthCheck = MissionCheck & {
+  mission: string;
+  checkedAt: string;
+  matchId: string;
+  xpGained: number;
+};
+
+type GrowthProgress = {
+  totalXp: number;
+  activeMission: GrowthMission | null;
+  lastCheck: GrowthCheck | null;
+};
+
 type BillingPlan =
   | "card_monthly"
   | "paypay_30day"
@@ -122,6 +153,9 @@ type BillingEntitlement = {
 };
 
 const HISTORY_KEY = "radiant-review-web-history-v1";
+const GROWTH_KEY = "radiant-review-web-growth-v1";
+const XP_PER_CLEAR = 50;
+const XP_PER_LEVEL = 100;
 const MAX_VOD_SECONDS = 60 * 60;
 const CAPTURE_OFFSETS = [-20, -12, -6, 0, 5];
 const AUTO_SCAN_SAMPLE_SECONDS = 0.75;
@@ -224,6 +258,11 @@ function demoReview(firstTag?: string): Review {
       "『トレード可能』か『必要スキル使用済み』のどちらかを満たしてから勝負する。",
     ],
     next_focus: "次の1試合は、ピーク前に味方との距離を1回確認する。",
+    mission_check: {
+      status: "not_applicable",
+      evidence: "デモでは前回ミッションの達成判定を行いません。",
+      confidence: "low",
+    },
     confidence: "low",
     uncertainty: "これは画面確認を行わないデモです。本解析では切り出した画像だけを根拠に判定します。",
   };
@@ -295,6 +334,11 @@ export default function Home() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [review, setReview] = useState<Review | null>(null);
   const [historyItems, setHistoryItems] = useState<HistoryEntry[]>([]);
+  const [growthProgress, setGrowthProgress] = useState<GrowthProgress>({
+    totalXp: 0,
+    activeMission: null,
+    lastCheck: null,
+  });
 
   useEffect(() => {
     const loadSavedHistory = window.setTimeout(() => {
@@ -303,6 +347,29 @@ export default function Home() {
         if (Array.isArray(saved)) setHistoryItems(saved.slice(0, 50));
       } catch {
         localStorage.removeItem(HISTORY_KEY);
+      }
+      try {
+        const savedGrowth = JSON.parse(localStorage.getItem(GROWTH_KEY) || "null") as Partial<GrowthProgress> | null;
+        if (savedGrowth && Number.isFinite(savedGrowth.totalXp) && savedGrowth.totalXp! >= 0) {
+          const mission = savedGrowth.activeMission;
+          setGrowthProgress({
+            totalXp: Math.floor(savedGrowth.totalXp!),
+            activeMission: mission && typeof mission.text === "string" && typeof mission.sourceMatchId === "string"
+              ? {
+                id: typeof mission.id === "string" ? mission.id : `${Date.now()}-mission`,
+                text: mission.text,
+                createdAt: typeof mission.createdAt === "string" ? mission.createdAt : new Date().toISOString(),
+                sourceMatchId: mission.sourceMatchId,
+                checkedMatchIds: Array.isArray(mission.checkedMatchIds) ? mission.checkedMatchIds.filter((item): item is string => typeof item === "string").slice(-20) : [],
+              }
+              : null,
+            lastCheck: savedGrowth.lastCheck && typeof savedGrowth.lastCheck.mission === "string"
+              ? savedGrowth.lastCheck as GrowthCheck
+              : null,
+          });
+        }
+      } catch {
+        localStorage.removeItem(GROWTH_KEY);
       }
     }, 0);
     return () => {
@@ -648,9 +715,53 @@ export default function Home() {
   const finishReview = useCallback((nextReview: Review, usedModel: string, message: string) => {
     setReview(nextReview);
     saveHistory(nextReview, usedModel);
+    if (usedModel !== "demo") {
+      setGrowthProgress((current) => {
+        const now = new Date().toISOString();
+        const createMission = (): GrowthMission => ({
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          text: nextReview.next_focus,
+          createdAt: now,
+          sourceMatchId: matchId,
+          checkedMatchIds: [],
+        });
+        let next: GrowthProgress = current;
+        const mission = current.activeMission;
+        const check = nextReview.mission_check;
+
+        if (!mission && nextReview.next_focus) {
+          next = { ...current, activeMission: createMission() };
+        } else if (
+          mission
+          && matchId
+          && mission.sourceMatchId !== matchId
+          && !mission.checkedMatchIds.includes(matchId)
+          && check
+          && check.status !== "not_applicable"
+        ) {
+          const cleared = check.status === "cleared";
+          next = {
+            totalXp: current.totalXp + (cleared ? XP_PER_CLEAR : 0),
+            activeMission: cleared
+              ? createMission()
+              : { ...mission, checkedMatchIds: [...mission.checkedMatchIds, matchId].slice(-20) },
+            lastCheck: {
+              ...check,
+              mission: mission.text,
+              checkedAt: now,
+              matchId,
+              xpGained: cleared ? XP_PER_CLEAR : 0,
+            },
+          };
+        }
+
+        localStorage.setItem(GROWTH_KEY, JSON.stringify(next));
+        return next;
+      });
+    }
     setStatus({ message, tone: "success" });
     window.setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
-  }, [saveHistory]);
+  }, [matchId, saveHistory]);
 
   const analyze = async () => {
     if (frames.length < 2) {
@@ -663,12 +774,19 @@ export default function Home() {
       return;
     }
     setIsAnalyzing(true);
-    setStatus({ message: "AIが5つの場面を時系列で確認しています…", tone: "neutral" });
+    const activeMission = growthProgress.activeMission;
+    const previousMission = activeMission
+      && matchId
+      && activeMission.sourceMatchId !== matchId
+      && !activeMission.checkedMatchIds.includes(matchId)
+      ? activeMission.text
+      : "";
+    setStatus({ message: previousMission ? "AIが今回の場面と前回ミッションを照合しています…" : "AIが5つの場面を時系列で確認しています…", tone: "neutral" });
     try {
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: apiKey.trim(), model, metadata: matchContext, frames: frames.map(({ label, dataUrl }) => ({ label, dataUrl })) }),
+        body: JSON.stringify({ apiKey: apiKey.trim(), model, metadata: matchContext, previousMission, frames: frames.map(({ label, dataUrl }) => ({ label, dataUrl })) }),
       });
       const data = (await response.json()) as { ok?: boolean; error?: string; review?: Review; model?: string };
       if (!response.ok || !data.ok || !data.review) throw new Error(data.error || "AI解析に失敗しました。");
@@ -813,6 +931,8 @@ export default function Home() {
   }, [historyItems]);
 
   const reviewReady = frames.length >= 2;
+  const growthLevel = Math.floor(growthProgress.totalXp / XP_PER_LEVEL) + 1;
+  const xpInLevel = growthProgress.totalXp % XP_PER_LEVEL;
   const activeTier = entitlement?.plan.startsWith("climb_") ? "Climb" : "Review";
   const activePayment = entitlement?.plan.includes("paypay") ? "PayPay 30日パス" : "カード月額";
 
@@ -857,13 +977,40 @@ export default function Home() {
       <main id="review" className="main-content">
         <section className="intro-strip" aria-labelledby="page-title">
           <div>
-            <p className="eyebrow">BROWSER PROTOTYPE 0.2</p>
+            <p className="eyebrow">BROWSER PROTOTYPE 0.3</p>
             <h1 id="page-title">1デスを、次のラウンドの武器に。</h1>
             <p className="intro-copy">録画を選ぶだけ。ブラウザがデス候補を自動検出し、前20秒〜後5秒を切り出します。</p>
           </div>
           <div className="capability-row" aria-label="対応範囲">
             <span><Clock3 /> 最大60分</span><span><MonitorUp /> 1080p / 60fps</span><span><Film /> MP4・WebM・MOV</span>
           </div>
+        </section>
+
+        <section className="growth-level-strip" aria-labelledby="growth-level-title">
+          <div className="level-emblem" aria-label={`成長レベル ${growthLevel}`}><small>GROWTH</small><strong>LV {growthLevel}</strong></div>
+          <div className="level-progress-copy">
+            <div><span><Award /> <strong id="growth-level-title">成長レベル</strong><Badge variant="outline">全ユーザー</Badge></span><b>{growthProgress.totalXp} XP</b></div>
+            <Progress value={xpInLevel} aria-label={`次のレベルまで${XP_PER_LEVEL - xpInLevel} XP`} />
+            <small>次のレベルまで {XP_PER_LEVEL - xpInLevel} XP</small>
+          </div>
+          <div className="active-mission-copy">
+            <small>ACTIVE MISSION</small>
+            <strong>{growthProgress.activeMission?.text || "最初のAIレビューでミッションが決まります"}</strong>
+            <span><BrainCircuit /> 次の別試合の録画だけでAI判定・クリアで +50 XP</span>
+          </div>
+          {growthProgress.lastCheck ? (
+            <div className={`last-mission-check ${growthProgress.lastCheck.status}`}>
+              <small>LAST CHECK</small>
+              <strong>{growthProgress.lastCheck.status === "cleared" ? `クリア +${growthProgress.lastCheck.xpGained} XP` : growthProgress.lastCheck.status === "improving" ? "改善中・0 XP" : growthProgress.lastCheck.status === "not_cleared" ? "継続中・0 XP" : "判定保留・0 XP"}</strong>
+              <span>{growthProgress.lastCheck.evidence}</span>
+            </div>
+          ) : (
+            <div className="last-mission-check pending">
+              <small>LAST CHECK</small>
+              <strong>AI判定待ち</strong>
+              <span>ミッション作成後、次の別試合で初回判定</span>
+            </div>
+          )}
         </section>
 
         <section className="plan-banner" aria-label="Climb料金プラン">
@@ -1032,7 +1179,13 @@ export default function Home() {
                 <div className="review-content">
                   <p className="review-kicker">NEXT ROUND PRIORITY</p>
                   <h3>{review.headline}</h3>
-                  <div className="focus-card"><Crosshair /><div><small>次の1試合で意識すること</small><strong>{review.next_focus}</strong></div></div>
+                  {review.mission_check && review.mission_check.status !== "not_applicable" ? (
+                    <div className={`mission-check-card ${review.mission_check.status}`}>
+                      <Award />
+                      <div><small>前回ミッションのAI判定</small><strong>{review.mission_check.status === "cleared" ? `クリア・+${XP_PER_CLEAR} XP` : review.mission_check.status === "improving" ? "改善中・XPはクリア後" : review.mission_check.status === "not_cleared" ? "未クリア・次の録画へ継続" : "判定保留・次の録画へ継続"}</strong><p>{review.mission_check.evidence}</p></div>
+                    </div>
+                  ) : null}
+                  <div className="focus-card"><Crosshair /><div><small>現在の成長ミッション</small><strong>{growthProgress.activeMission?.text || review.next_focus}</strong></div></div>
                   <div className="issue-card"><div><span>主な問題</span><Badge variant="outline">{review.main_issue.category}</Badge></div><p>{review.main_issue.evidence}</p></div>
                   <div className="review-block"><h4>画面で確認できたこと</h4><ul>{review.observed.map((item) => <li key={item}>{item}</li>)}</ul></div>
                   <div className="review-block"><h4>改善アクション</h4><ol>{review.improvements.map((item) => <li key={item}>{item}</li>)}</ol></div>

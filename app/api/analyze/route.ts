@@ -33,6 +33,19 @@ const REVIEW_SCHEMA = {
     },
     improvements: { type: "array", items: { type: "string" } },
     next_focus: { type: "string" },
+    mission_check: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: ["cleared", "improving", "not_cleared", "insufficient", "not_applicable"],
+        },
+        evidence: { type: "string" },
+        confidence: { type: "string", enum: ["low", "medium", "high"] },
+      },
+      required: ["status", "evidence", "confidence"],
+      additionalProperties: false,
+    },
     confidence: { type: "string", enum: ["low", "medium", "high"] },
     uncertainty: { type: "string" },
   },
@@ -43,6 +56,7 @@ const REVIEW_SCHEMA = {
     "main_issue",
     "improvements",
     "next_focus",
+    "mission_check",
     "confidence",
     "uncertainty",
   ],
@@ -56,6 +70,9 @@ const COACH_INSTRUCTIONS = `あなたは高ランク帯VALORANT専門のVODコ�
 死亡後のフレームは、味方のトレード可否やキルフィードなど、画面で確認できる結果だけの補助材料にしてください。
 K/Dではなく、再現性のある判断改善を重視してください。
 回答は日本語で簡潔にし、次の1試合で意識する課題は必ず1つに絞ってください。
+前回ミッションが入力された場合は、今回の録画フレームだけを根拠に達成状況を判定してください。
+達成を直接確認できる場合だけmission_check.statusをclearedにしてください。一部だけ改善はimproving、反対の行動が確認できる場合はnot_cleared、映像から判断できない場合はinsufficientです。
+前回ミッションが入力されていない場合はmission_check.statusをnot_applicableにしてください。
 イニシエーターなら、索敵、味方との同期、スキルを持ったままの死亡を特に確認してください。
 材料不足ならstatusをinsufficient、categoryを判定困難にしてください。`;
 
@@ -64,6 +81,7 @@ type AnalyzeBody = {
   model?: unknown;
   metadata?: unknown;
   frames?: unknown;
+  previousMission?: unknown;
 };
 
 type SafeFrame = { label: string; dataUrl: string };
@@ -172,10 +190,11 @@ export async function POST(request: Request) {
     if (!ALLOWED_MODELS.has(model)) throw new RequestError("選択されたモデルは利用できません。");
     const frames = cleanFrames(body.frames);
     const metadata = cleanMetadata(body.metadata);
+    const previousMission = cleanText(body.previousMission, 320);
 
     const content: Array<Record<string, unknown>> = [{
       type: "input_text",
-      text: `以下はデス前20秒からデス後5秒まで、順番に並んだフレームです。画面で確認できる内容だけを根拠にレビューしてください。\n試合情報: ${JSON.stringify(metadata)}`,
+      text: `以下はデス前20秒からデス後5秒まで、順番に並んだフレームです。画面で確認できる内容だけを根拠にレビューしてください。\n試合情報: ${JSON.stringify(metadata)}\n前回ミッション: ${previousMission || "なし（今回は新しいミッションの作成だけ行う）"}`,
     }];
     for (const frame of frames) {
       content.push({ type: "input_text", text: frame.label });

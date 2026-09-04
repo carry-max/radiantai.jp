@@ -188,6 +188,51 @@ button, label[for] { -webkit-tap-highlight-color: transparent; }
 }
 .capability-row svg { width: 15px; height: 15px; color: var(--mint); }
 
+.growth-level-strip {
+  display: grid;
+  grid-template-columns: auto minmax(220px, .72fr) minmax(340px, 1.18fr) minmax(190px, .62fr);
+  align-items: stretch;
+  gap: 1px;
+  margin-bottom: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(120,230,194,.3);
+  background: rgba(120,230,194,.24);
+  box-shadow: 0 18px 38px rgba(0,0,0,.16);
+}
+.growth-level-strip > div { min-width: 0; background: linear-gradient(140deg, #121922, #0b1017); }
+.level-emblem {
+  display: grid;
+  min-width: 108px;
+  place-content: center;
+  padding: 18px;
+  background: linear-gradient(145deg, rgba(120,230,194,.22), rgba(12,20,22,.96)) !important;
+  text-align: center;
+}
+.level-emblem small { color: #88b9aa; font-family: var(--font-mono); font-size: 10px; font-weight: 750; letter-spacing: .17em; }
+.level-emblem strong { color: var(--mint); font-family: var(--font-mono); font-size: 27px; letter-spacing: -.07em; }
+.level-progress-copy { display: grid; align-content: center; gap: 8px; padding: 15px 18px; }
+.level-progress-copy > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.level-progress-copy > div > span { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.level-progress-copy svg { width: 17px; height: 17px; flex: 0 0 auto; color: var(--mint); }
+.level-progress-copy strong { font-size: 14px; }
+.level-progress-copy b { color: #d8f5ec; font-family: var(--font-mono); font-size: 13px; white-space: nowrap; }
+.level-progress-copy [data-slot="badge"] { border-color: rgba(120,230,194,.28); color: var(--mint); font-size: 9px; }
+.level-progress-copy [data-slot="progress"] { height: 7px; background: #28333d; }
+.level-progress-copy [data-slot="progress-indicator"] { background: linear-gradient(90deg, #4bbf9d, var(--mint)); }
+.level-progress-copy > small { color: #758294; font-size: 11px; }
+.active-mission-copy, .last-mission-check { display: grid; align-content: center; gap: 5px; padding: 15px 18px; }
+.active-mission-copy > small, .last-mission-check > small { color: #758294; font-family: var(--font-mono); font-size: 9px; font-weight: 750; letter-spacing: .13em; }
+.active-mission-copy > strong { overflow: hidden; font-size: 14px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.active-mission-copy > span { display: flex; align-items: center; gap: 6px; color: #7eab9e; font-size: 11px; }
+.active-mission-copy > span svg { width: 14px; height: 14px; flex: 0 0 auto; color: var(--mint); }
+.last-mission-check { border-left: 2px solid #596577; }
+.last-mission-check strong { color: #b8c1cc; font-size: 13px; }
+.last-mission-check span { overflow: hidden; color: #727e90; font-size: 10px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.last-mission-check.cleared { border-left-color: var(--mint); background: linear-gradient(140deg, rgba(120,230,194,.13), #0b1117); }
+.last-mission-check.cleared strong { color: var(--mint); }
+.last-mission-check.not_cleared { border-left-color: var(--signal); }
+.last-mission-check.improving { border-left-color: #ffc26e; }
+
 .plan-banner {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -402,6 +447,18 @@ kbd { display: inline-grid; min-width: 24px; height: 23px; margin-left: 3px; pla
 .focus-card div { display: grid; gap: 5px; }
 .focus-card small { color: #ff9aa2; font-size: 10px; font-weight: 700; letter-spacing: .07em; }
 .focus-card strong { font-size: 14px; line-height: 1.65; }
+.mission-check-card { display: flex; gap: 12px; margin-bottom: 12px; padding: 14px 15px; border: 1px solid #374253; background: #0d1219; }
+.mission-check-card > svg { width: 22px; height: 22px; flex: 0 0 auto; margin-top: 2px; color: #9aa5b5; }
+.mission-check-card > div { display: grid; gap: 4px; }
+.mission-check-card small { color: #768295; font-size: 10px; font-weight: 750; letter-spacing: .07em; }
+.mission-check-card strong { color: #c6cdd7; font-size: 14px; }
+.mission-check-card p { margin: 0; color: #8691a2; font-size: 12px; line-height: 1.6; }
+.mission-check-card.cleared { border-color: rgba(120,230,194,.38); background: linear-gradient(120deg, rgba(120,230,194,.12), rgba(120,230,194,.025)); }
+.mission-check-card.cleared > svg, .mission-check-card.cleared strong { color: var(--mint); }
+.mission-check-card.improving { border-color: rgba(255,194,110,.34); }
+.mission-check-card.improving > svg, .mission-check-card.improving strong { color: #ffc26e; }
+.mission-check-card.not_cleared { border-color: rgba(255,70,85,.3); }
+.mission-check-card.not_cleared > svg { color: var(--signal); }
 .issue-card { margin-top: 12px; padding: 14px; border: 1px solid #303949; background: #0d1118; }
 .issue-card > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .issue-card > div > span { color: #8f99a8; font-size: 11px; font-weight: 700; }
@@ -555,6 +612,9 @@ footer p { margin: 0; text-align: right; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 1100px) {
+  .growth-level-strip { grid-template-columns: 108px minmax(0, 1fr); }
+  .active-mission-copy, .last-mission-check { grid-column: 1 / -1; }
+  .last-mission-check { border-top: 1px solid rgba(120,230,194,.2); border-left-width: 0; }
   .workspace-grid { grid-template-columns: 1fr; }
   .secondary-column { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   .pipeline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -572,6 +632,11 @@ footer p { margin: 0; text-align: right; }
   .intro-strip h1 { font-size: 28px; }
   .capability-row { justify-content: flex-start; }
   .capability-row span { padding: 8px 9px; font-size: 11px; }
+  .growth-level-strip { grid-template-columns: 1fr; }
+  .level-emblem { min-width: 0; place-content: initial; grid-template-columns: auto auto; align-items: baseline; justify-content: space-between; padding: 13px 14px; text-align: left; }
+  .level-emblem strong { font-size: 23px; }
+  .level-progress-copy, .active-mission-copy, .last-mission-check { grid-column: auto; padding: 14px; }
+  .active-mission-copy > strong, .last-mission-check span { overflow: visible; text-overflow: clip; white-space: normal; }
   .plan-banner { grid-template-columns: minmax(0, 1fr) auto; gap: 13px; padding: 14px; }
   .plan-banner-price { display: none; }
   .plan-banner > button { grid-column: 1 / -1; width: 100%; }

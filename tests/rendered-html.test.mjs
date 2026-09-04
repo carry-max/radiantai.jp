@@ -54,6 +54,9 @@ test("renders development preview metadata", async () => {
   assert.match(html, /複数試合比較/);
   assert.match(html, /苦手マップ・エージェント/);
   assert.match(html, /反省点の推移・過去比較/);
+  assert.match(html, /成長レベル/);
+  assert.match(html, /次の別試合の録画だけでAI判定/);
+  assert.match(html, /クリアで \+50 XP/);
   assert.match(html, /CLIMB/);
   assert.match(html, /PAYPAY QR \+ STRIPE/);
   assert.match(html, /Reviewは900円・5試合/);
