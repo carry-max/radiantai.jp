@@ -3,7 +3,9 @@
 /* eslint-disable @next/next/no-img-element */
 
 import {
+  Activity,
   AlertTriangle,
+  BarChart3,
   BrainCircuit,
   CheckCircle2,
   Clock3,
@@ -15,15 +17,20 @@ import {
   History,
   KeyRound,
   LoaderCircle,
+  MapPinned,
   MonitorUp,
   Play,
   RotateCcw,
+  ScanLine,
   Settings2,
   ShieldCheck,
   Sparkles,
   Target,
+  TrendingDown,
+  TrendingUp,
   Trash2,
   UploadCloud,
+  UsersRound,
   Zap,
 } from "lucide-react";
 import {
@@ -50,6 +57,12 @@ import {
 } from "@/components/ui/native-select";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  type DeathCandidate,
+  type DeathDetectionSample,
+  extractDeathCandidates,
+  measureDeathFrame,
+} from "@/lib/death-detection";
 
 type Frame = { label: string; time: number; dataUrl: string };
 
@@ -83,6 +96,9 @@ type HistoryEntry = {
   id: string;
   createdAt: string;
   model: string;
+  matchId?: string;
+  fileName?: string;
+  deathSource?: "auto" | "manual";
   metadata: MatchContext;
   review: Review;
 };
@@ -90,6 +106,7 @@ type HistoryEntry = {
 const HISTORY_KEY = "radiant-review-web-history-v1";
 const MAX_VOD_SECONDS = 60 * 60;
 const CAPTURE_OFFSETS = [-20, -12, -6, 0, 5];
+const AUTO_SCAN_SAMPLE_SECONDS = 0.75;
 const TAGS = ["先落ち", "トレード不可", "スキル残し", "不要ピーク", "人数有利", "タイミング", "クロスヘア"];
 const MAPS = ["Ascent", "Abyss", "Bind", "Breeze", "Corrode", "Fracture", "Haven", "Icebox", "Lotus", "Pearl", "Split", "Sunset"];
 
@@ -133,6 +150,28 @@ function waitForSeek(video: HTMLVideoElement, target: number) {
     video.addEventListener("seeked", onSeeked, { once: true });
     video.addEventListener("error", onError, { once: true });
     video.currentTime = target;
+  });
+}
+
+function waitForVideoData(video: HTMLVideoElement) {
+  return new Promise<void>((resolve, reject) => {
+    if (video.readyState >= 2 && Number.isFinite(video.duration)) {
+      resolve();
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("自動検出用の動画を読み込めませんでした。"));
+    }, 12_000);
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      video.removeEventListener("loadeddata", onLoaded);
+      video.removeEventListener("error", onError);
+    };
+    const onLoaded = () => { cleanup(); resolve(); };
+    const onError = () => { cleanup(); reject(new Error("自動検出用の動画を読み込めませんでした。")); };
+    video.addEventListener("loadeddata", onLoaded, { once: true });
+    video.addEventListener("error", onError, { once: true });
   });
 }
 
@@ -198,11 +237,14 @@ export default function Home() {
   const resultRef = useRef<HTMLElement>(null);
   const objectUrlRef = useRef<string | null>(null);
   const reviewEndRef = useRef<number | null>(null);
+  const scanRunRef = useRef(0);
+  const autoScannedUrlRef = useRef<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [model, setModel] = useState("gpt-5.6-luna");
   const [fileName, setFileName] = useState("");
+  const [matchId, setMatchId] = useState("");
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -210,6 +252,11 @@ export default function Home() {
   const [videoTooLong, setVideoTooLong] = useState(false);
   const [frames, setFrames] = useState<Frame[]>([]);
   const [deathTimestamp, setDeathTimestamp] = useState(0);
+  const [deathSource, setDeathSource] = useState<"auto" | "manual">("auto");
+  const [deathCandidates, setDeathCandidates] = useState<DeathCandidate[]>([]);
+  const [selectedDeathId, setSelectedDeathId] = useState("");
+  const [isDetectingDeaths, setIsDetectingDeaths] = useState(false);
+  const [detectionProgress, setDetectionProgress] = useState(0);
   const [captureProgress, setCaptureProgress] = useState(0);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isReviewPlaying, setIsReviewPlaying] = useState(false);
@@ -236,6 +283,7 @@ export default function Home() {
     }, 0);
     return () => {
       window.clearTimeout(loadSavedHistory);
+      scanRunRef.current += 1;
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     };
   }, []);
@@ -256,6 +304,9 @@ export default function Home() {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       createdAt: new Date().toISOString(),
       model: usedModel,
+      matchId,
+      fileName,
+      deathSource,
       metadata: matchContext,
       review: nextReview,
     };
@@ -264,7 +315,7 @@ export default function Home() {
       localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
       return next;
     });
-  }, [matchContext]);
+  }, [deathSource, fileName, matchContext, matchId]);
 
   const loadVideo = useCallback((file?: File) => {
     if (!file) return;
@@ -272,15 +323,22 @@ export default function Home() {
       setStatus({ message: "MP4・WebM・MOVの動画を選んでください。", tone: "error" });
       return;
     }
+    scanRunRef.current += 1;
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     const url = URL.createObjectURL(file);
     objectUrlRef.current = url;
+    autoScannedUrlRef.current = null;
     setFileName(file.name);
+    setMatchId(`${file.name}:${file.size}:${file.lastModified}`);
     setDuration(0);
     setCurrentTime(0);
     setVideoReady(false);
     setVideoTooLong(false);
     setFrames([]);
+    setDeathCandidates([]);
+    setSelectedDeathId("");
+    setDetectionProgress(0);
+    setIsDetectingDeaths(false);
     setReview(null);
     reviewEndRef.current = null;
     setIsReviewPlaying(false);
@@ -289,21 +347,21 @@ export default function Home() {
     if (videoRef.current) { videoRef.current.src = url; videoRef.current.load(); }
   }, []);
 
-  const captureFrames = useCallback(async () => {
+  const captureFramesAt = useCallback(async (markedAt: number, source: "auto" | "manual") => {
     const video = videoRef.current;
     if (!video || !videoReady || videoTooLong || isCapturing) return;
     video.pause();
-    const markedAt = video.currentTime;
     const targets = CAPTURE_OFFSETS.map((offset) => ({ offset, time: Math.max(0, Math.min(markedAt + offset, video.duration - 0.05)) }))
       .filter((item, index, all) => all.findIndex((other) => Math.abs(other.time - item.time) < 0.25) === index);
     if (targets.length < 2) {
-      setStatus({ message: "開始直後すぎます。少し進めてからデス地点を登録してください。", tone: "error" });
+      setStatus({ message: "開始直後すぎるため、この候補は切り出せません。", tone: "error" });
       return;
     }
     setIsCapturing(true);
+    setDeathSource(source);
     setFrames([]);
     setCaptureProgress(0);
-    setStatus({ message: "デス直前の場面を端末内で切り出しています…", tone: "neutral" });
+    setStatus({ message: source === "auto" ? "自動検出したデスの前後を切り出しています…" : "現在時刻の前後を切り出しています…", tone: "neutral" });
     try {
       const captured: Frame[] = [];
       for (let index = 0; index < targets.length; index += 1) {
@@ -319,13 +377,164 @@ export default function Home() {
       setFrames(captured);
       setDeathTimestamp(markedAt);
       await waitForSeek(video, markedAt);
-      setStatus({ message: `${captured.length}枚を取得しました。25秒を確認してから解析できます。`, tone: "success" });
+      setStatus({ message: `${formatTime(markedAt)}の${captured.length}枚を取得しました。確認して解析できます。`, tone: "success" });
     } catch (error) {
       setStatus({ message: error instanceof Error ? error.message : "フレーム取得に失敗しました。", tone: "error" });
     } finally {
       setIsCapturing(false);
     }
   }, [isCapturing, videoReady, videoTooLong]);
+
+  const captureFrames = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    setSelectedDeathId("");
+    await captureFramesAt(video.currentTime, "manual");
+  }, [captureFramesAt]);
+
+  const detectDeaths = useCallback(async () => {
+    const sourceUrl = objectUrlRef.current;
+    if (!sourceUrl || !videoReady || videoTooLong || !duration || isDetectingDeaths) return;
+    const runId = scanRunRef.current + 1;
+    scanRunRef.current = runId;
+    const scanVideo = document.createElement("video");
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 180;
+    const context = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+    if (!context) {
+      setStatus({ message: "ブラウザの映像解析機能を開始できませんでした。", tone: "error" });
+      return;
+    }
+
+    setIsDetectingDeaths(true);
+    setDetectionProgress(0);
+    setDeathCandidates([]);
+    setSelectedDeathId("");
+    setFrames([]);
+    setStatus({ message: "録画を端末内で高速再生し、デス画面を自動検出しています…", tone: "neutral" });
+
+    scanVideo.src = sourceUrl;
+    scanVideo.muted = true;
+    scanVideo.playsInline = true;
+    scanVideo.preload = "auto";
+    scanVideo.setAttribute("aria-hidden", "true");
+    Object.assign(scanVideo.style, {
+      position: "fixed",
+      left: "-10000px",
+      top: "0",
+      width: "320px",
+      height: "180px",
+      pointerEvents: "none",
+    });
+    document.body.appendChild(scanVideo);
+
+    const samples: DeathDetectionSample[] = [];
+    let lastSampleAt = -AUTO_SCAN_SAMPLE_SECONDS;
+    let lastProgress = -1;
+    const recordSample = (mediaTime: number) => {
+      if (runId !== scanRunRef.current || mediaTime - lastSampleAt < AUTO_SCAN_SAMPLE_SECONDS) return;
+      lastSampleAt = mediaTime;
+      context.drawImage(scanVideo, 0, 0, canvas.width, canvas.height);
+      const image = context.getImageData(0, 0, canvas.width, canvas.height);
+      const signal = measureDeathFrame(image.data, canvas.width, canvas.height);
+      samples.push({ time: mediaTime, ...signal });
+      const progress = Math.min(99, Math.round((mediaTime / duration) * 100));
+      if (progress >= lastProgress + 1) {
+        lastProgress = progress;
+        setDetectionProgress(progress);
+      }
+    };
+
+    try {
+      await waitForVideoData(scanVideo);
+      try {
+        scanVideo.playbackRate = 16;
+        scanVideo.defaultPlaybackRate = 16;
+      } catch {
+        scanVideo.playbackRate = 4;
+        scanVideo.defaultPlaybackRate = 4;
+      }
+      if ("preservesPitch" in scanVideo) scanVideo.preservesPitch = false;
+
+      await new Promise<void>((resolve, reject) => {
+        let finished = false;
+        let frameRequest = 0;
+        let pollTimer = 0;
+        const timeout = window.setTimeout(() => finish(new Error("自動検出に時間がかかりすぎています。再検出をお試しください。")), Math.max(120_000, (duration / 8) * 1000 + 120_000));
+        const cleanup = () => {
+          window.clearTimeout(timeout);
+          if (pollTimer) window.clearInterval(pollTimer);
+          if (frameRequest && typeof scanVideo.cancelVideoFrameCallback === "function") scanVideo.cancelVideoFrameCallback(frameRequest);
+          scanVideo.removeEventListener("ended", onEnded);
+          scanVideo.removeEventListener("error", onError);
+        };
+        function finish(error?: Error) {
+          if (finished) return;
+          finished = true;
+          cleanup();
+          if (error) reject(error);
+          else resolve();
+        }
+        const onEnded = () => {
+          recordSample(Math.min(duration, scanVideo.currentTime));
+          finish();
+        };
+        const onError = () => finish(new Error("動画の高速走査中に読み取りエラーが発生しました。"));
+        const onFrame: VideoFrameRequestCallback = (_now, metadata) => {
+          if (runId !== scanRunRef.current) {
+            finish();
+            return;
+          }
+          recordSample(metadata.mediaTime);
+          if (scanVideo.ended || scanVideo.currentTime >= duration - 0.05) finish();
+          else frameRequest = scanVideo.requestVideoFrameCallback(onFrame);
+        };
+
+        scanVideo.addEventListener("ended", onEnded, { once: true });
+        scanVideo.addEventListener("error", onError, { once: true });
+        if (typeof scanVideo.requestVideoFrameCallback === "function") {
+          frameRequest = scanVideo.requestVideoFrameCallback(onFrame);
+        } else {
+          pollTimer = window.setInterval(() => {
+            if (runId !== scanRunRef.current) finish();
+            else recordSample(scanVideo.currentTime);
+          }, 55);
+        }
+        void scanVideo.play().catch(() => finish(new Error("自動検出を開始できませんでした。再検出ボタンを押してください。")));
+      });
+
+      if (runId !== scanRunRef.current) return;
+      const candidates = extractDeathCandidates(samples, duration);
+      setDetectionProgress(100);
+      setDeathCandidates(candidates);
+      if (!candidates.length) {
+        setStatus({ message: "デス候補を見つけられませんでした。HUD表示を確認するか、現在時刻を追加してください。", tone: "error" });
+        return;
+      }
+      setSelectedDeathId(candidates[0].id);
+      setStatus({ message: `${candidates.length}件のデス候補を自動検出しました。最初の候補を準備しています…`, tone: "success" });
+      await captureFramesAt(candidates[0].time, "auto");
+    } catch (error) {
+      if (runId === scanRunRef.current) {
+        setStatus({ message: error instanceof Error ? error.message : "デスの自動検出に失敗しました。", tone: "error" });
+      }
+    } finally {
+      scanVideo.pause();
+      scanVideo.removeAttribute("src");
+      scanVideo.load();
+      scanVideo.remove();
+      if (runId === scanRunRef.current) setIsDetectingDeaths(false);
+    }
+  }, [captureFramesAt, duration, isDetectingDeaths, videoReady, videoTooLong]);
+
+  useEffect(() => {
+    const sourceUrl = objectUrlRef.current;
+    if (!sourceUrl || !videoReady || videoTooLong || !duration || autoScannedUrlRef.current === sourceUrl) return;
+    autoScannedUrlRef.current = sourceUrl;
+    const timer = window.setTimeout(() => void detectDeaths(), 80);
+    return () => window.clearTimeout(timer);
+  }, [detectDeaths, duration, videoReady, videoTooLong]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -431,6 +640,98 @@ export default function Home() {
     downloadText(`radiant-review-${new Date().toISOString().slice(0, 10)}.md`, lines.join("\n"));
   };
 
+  const chooseDeathCandidate = useCallback(async (candidate: DeathCandidate) => {
+    if (isCapturing || isDetectingDeaths) return;
+    setSelectedDeathId(candidate.id);
+    await captureFramesAt(candidate.time, "auto");
+  }, [captureFramesAt, isCapturing, isDetectingDeaths]);
+
+  const climbInsights = useMemo(() => {
+    const severityValue = { low: 1, medium: 2, high: 3 } as const;
+    const rankedDimension = (selector: (entry: HistoryEntry) => string) => {
+      const groups = new Map<string, { count: number; total: number }>();
+      historyItems.forEach((entry) => {
+        const label = selector(entry).trim();
+        if (!label) return;
+        const current = groups.get(label) || { count: 0, total: 0 };
+        current.count += 1;
+        current.total += severityValue[entry.review.main_issue.severity];
+        groups.set(label, current);
+      });
+      return [...groups.entries()]
+        .map(([label, value]) => ({ label, count: value.count, average: value.total / value.count }))
+        .sort((a, b) => b.average - a.average || b.count - a.count)[0] || null;
+    };
+
+    const matchGroups = new Map<string, { label: string; createdAt: string; entries: HistoryEntry[] }>();
+    historyItems.forEach((entry) => {
+      const key = entry.matchId || `${entry.createdAt.slice(0, 10)}:${entry.metadata.map}:${entry.metadata.agent || entry.metadata.role}`;
+      const current = matchGroups.get(key) || {
+        label: entry.fileName?.replace(/\.[^.]+$/, "") || `${entry.metadata.map || "Map未設定"} / ${entry.metadata.agent || entry.metadata.role}`,
+        createdAt: entry.createdAt,
+        entries: [],
+      };
+      current.entries.push(entry);
+      if (entry.createdAt > current.createdAt) current.createdAt = entry.createdAt;
+      matchGroups.set(key, current);
+    });
+    const matches = [...matchGroups.values()]
+      .map((group) => {
+        const categoryCounts = new Map<string, number>();
+        let severityTotal = 0;
+        group.entries.forEach((entry) => {
+          const category = entry.review.main_issue.category;
+          categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1);
+          severityTotal += severityValue[entry.review.main_issue.severity];
+        });
+        const topIssue = [...categoryCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
+        return {
+          ...group,
+          topIssue,
+          average: severityTotal / Math.max(1, group.entries.length),
+        };
+      })
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+    const categoryCounts = new Map<string, number>();
+    historyItems.forEach((entry) => {
+      const category = entry.review.main_issue.category;
+      categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1);
+    });
+    const reasons = [...categoryCounts.entries()]
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+    const reasonMax = Math.max(1, ...reasons.map((reason) => reason.count));
+
+    const averageSeverity = (entries: HistoryEntry[]) => entries.reduce(
+      (total, entry) => total + severityValue[entry.review.main_issue.severity],
+      0,
+    ) / Math.max(1, entries.length);
+    const recent = historyItems.slice(0, 5);
+    const previous = historyItems.slice(5, 10);
+    const trend = recent.length >= 3 && previous.length >= 3
+      ? averageSeverity(recent) - averageSeverity(previous)
+      : null;
+    const latest = historyItems[0] || null;
+    const comparable = latest
+      ? historyItems.slice(1).find((entry) => (
+        entry.metadata.map === latest.metadata.map
+        && (entry.metadata.agent || entry.metadata.role) === (latest.metadata.agent || latest.metadata.role)
+      )) || historyItems[1] || null
+      : null;
+
+    return {
+      matches,
+      weakMap: rankedDimension((entry) => entry.metadata.map),
+      weakAgent: rankedDimension((entry) => entry.metadata.agent || entry.metadata.role),
+      reasons: reasons.map((reason) => ({ ...reason, percentage: Math.round((reason.count / reasonMax) * 100) })),
+      trend,
+      latest,
+      comparable,
+    };
+  }, [historyItems]);
+
   const reviewReady = frames.length >= 2;
 
   return (
@@ -449,9 +750,9 @@ export default function Home() {
       <main id="review" className="main-content">
         <section className="intro-strip" aria-labelledby="page-title">
           <div>
-            <p className="eyebrow">BROWSER PROTOTYPE 0.1</p>
+            <p className="eyebrow">BROWSER PROTOTYPE 0.2</p>
             <h1 id="page-title">1デスを、次のラウンドの武器に。</h1>
-            <p className="intro-copy">60分の録画でも、デス前20秒〜デス後5秒だけを端末内で切り出してレビューします。</p>
+            <p className="intro-copy">録画を選ぶだけ。ブラウザがデス候補を自動検出し、前20秒〜後5秒を切り出します。</p>
           </div>
           <div className="capability-row" aria-label="対応範囲">
             <span><Clock3 /> 最大60分</span><span><MonitorUp /> 1080p / 60fps</span><span><Film /> MP4・WebM・MOV</span>
@@ -459,10 +760,10 @@ export default function Home() {
         </section>
 
         <section className="pipeline" aria-label="処理の流れ">
-          <div><span className="pipeline-icon"><Play /></span><p><small>01 / LOCAL</small><strong>録画を再生</strong></p></div>
-          <div><span className="pipeline-icon"><Crosshair /></span><p><small>02 / CAPTURE</small><strong>デス地点を記録</strong></p></div>
+          <div><span className="pipeline-icon"><Play /></span><p><small>01 / LOCAL</small><strong>録画を選択</strong></p></div>
+          <div><span className="pipeline-icon"><ScanLine /></span><p><small>02 / AUTO DETECT</small><strong>デスを自動検出</strong></p></div>
           <div><span className="pipeline-icon"><BrainCircuit /></span><p><small>03 / REVIEW</small><strong>前20秒〜後5秒を解析</strong></p></div>
-          <aside><Zap /> 動画全体は送信しません</aside>
+          <aside><Zap /> 自動検出は追加API料金なし</aside>
         </section>
 
         <div className="workspace-grid">
@@ -505,8 +806,8 @@ export default function Home() {
                     const tooLong = nextDuration > MAX_VOD_SECONDS;
                     setVideoTooLong(tooLong);
                     setStatus(tooLong
-                      ? { message: "V0.1は最大60分です。短く分割して読み込んでください。", tone: "error" }
-                      : { message: "デス直後まで再生し、地点を記録してください。", tone: "success" });
+                      ? { message: "試作版は最大60分です。短く分割して読み込んでください。", tone: "error" }
+                      : { message: "録画を読み込みました。デス地点の自動検出を開始します。", tone: "success" });
                   }}
                   onError={() => setStatus({ message: "この動画を再生できません。MP4またはWebMをお試しください。", tone: "error" })}
                 />
@@ -518,11 +819,42 @@ export default function Home() {
                 <div><small>CURRENT</small><strong>{formatTime(currentTime)}</strong></div>
                 <div><small>DURATION</small><strong>{duration ? formatTime(duration) : "--:--"}</strong></div>
               </div>
-              <div className="capture-row">
-                <Button type="button" size="lg" disabled={!videoReady || videoTooLong || isCapturing} onClick={() => void captureFrames()} className="capture-button">
-                  {isCapturing ? <LoaderCircle className="spin" /> : <Crosshair />}{isCapturing ? "切り出し中…" : "この時刻をデス地点として記録"}
+              <div className="auto-detect-card">
+                <div className="auto-detect-summary">
+                  <span className="scan-icon"><ScanLine /></span>
+                  <div><span><Badge>CLIMB</Badge> ローカル検出</span><strong>デス地点を自動検出</strong><p>録画だけを高速走査します。動画の送信・追加API料金はありません。</p></div>
+                </div>
+                <Button type="button" variant="outline" disabled={!videoReady || videoTooLong || isDetectingDeaths || isCapturing} onClick={() => void detectDeaths()}>
+                  {isDetectingDeaths ? <LoaderCircle className="spin" /> : <ScanLine />}{isDetectingDeaths ? "検出中…" : deathCandidates.length ? "再検出" : "自動検出"}
                 </Button>
-                <p>デス直後で停止して押す <kbd>D</kbd></p>
+              </div>
+              {isDetectingDeaths ? <div className="detection-progress"><Progress value={detectionProgress} /><span>{detectionProgress}%</span><small>60分の録画は数分かかる場合があります</small></div> : null}
+              {deathCandidates.length ? (
+                <div className="death-candidates" aria-label="自動検出したデス候補">
+                  <div className="candidate-label"><strong>{deathCandidates.length}件検出</strong><span>選ぶと前後25秒を自動で準備</span></div>
+                  <div className="candidate-list">
+                    {deathCandidates.map((candidate, index) => (
+                      <button
+                        key={candidate.id}
+                        type="button"
+                        className={selectedDeathId === candidate.id ? "selected" : ""}
+                        aria-pressed={selectedDeathId === candidate.id}
+                        disabled={isCapturing || isDetectingDeaths}
+                        onClick={() => void chooseDeathCandidate(candidate)}
+                      >
+                        <small>DEATH {String(index + 1).padStart(2, "0")}</small>
+                        <strong>{formatTime(candidate.time)}</strong>
+                        <span className={`candidate-confidence ${candidate.confidence}`}>{candidate.confidence === "high" ? "高確度" : candidate.confidence === "medium" ? "中確度" : "要確認"}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <div className="manual-fallback">
+                <p>検出漏れのときだけ、デス直後で追加 <kbd>D</kbd></p>
+                <Button type="button" variant="ghost" disabled={!videoReady || videoTooLong || isDetectingDeaths || isCapturing} onClick={() => void captureFrames()}>
+                  <Crosshair /> 現在時刻を追加
+                </Button>
               </div>
               {isCapturing ? <div className="capture-progress"><Progress value={captureProgress} /><span>{captureProgress}%</span></div> : null}
               {reviewReady ? (
@@ -530,7 +862,7 @@ export default function Home() {
                   <Button type="button" variant="outline" disabled={isCapturing || isReviewPlaying} onClick={() => void playReviewWindow()}>
                     <Play /> {isReviewPlaying ? "25秒を再生中…" : "デス前20秒〜後5秒を再生"}
                   </Button>
-                  <span>登録時刻 {formatTime(deathTimestamp)}</span>
+                  <span>{deathSource === "auto" ? "自動検出" : "手動追加"} {formatTime(deathTimestamp)}</span>
                 </div>
               ) : null}
             </section>
@@ -546,7 +878,7 @@ export default function Home() {
                     </figure>
                   ))}
                 </div>
-              ) : <div className="empty-frames"><Target /><div><strong>まだ場面がありません</strong><span>Dキーでデス地点を登録すると、前20秒〜後5秒の5枚が並びます。</span></div></div>}
+              ) : <div className="empty-frames"><Target /><div><strong>{isDetectingDeaths ? "デスを探しています" : "まだ場面がありません"}</strong><span>{isDetectingDeaths ? "検出後、最初のデス前20秒〜後5秒が自動で並びます。" : "録画を選ぶとデス地点を自動検出します。"}</span></div></div>}
             </section>
           </div>
 
@@ -607,6 +939,63 @@ export default function Home() {
               </article>
             ))}</div>
           ) : <div className="empty-history"><History /><span>解析結果はこのブラウザに最大50件保存されます。</span></div>}
+        </section>
+
+        <section className="panel climb-panel">
+          <SectionHeading
+            step="06"
+            eyebrow="CLIMB INSIGHTS"
+            title="成長ダッシュボード"
+            trailing={<Badge variant="outline" className="local-insight-badge"><ShieldCheck /> 追加API料金なし</Badge>}
+          />
+          <div className="climb-grid">
+            <article className="insight-card match-comparison">
+              <div className="insight-title"><BarChart3 /><div><small>MATCH COMPARISON</small><h3>複数試合比較</h3></div><Badge variant="outline">{climbInsights.matches.length}試合</Badge></div>
+              {climbInsights.matches.length ? (
+                <div className="match-compare-list">
+                  {climbInsights.matches.slice(0, 4).map((match) => (
+                    <div key={`${match.createdAt}-${match.label}`}>
+                      <time>{new Intl.DateTimeFormat("ja-JP", { month: "numeric", day: "numeric" }).format(new Date(match.createdAt))}</time>
+                      <span><strong>{match.label}</strong><small>{match.entries.length}デス・最多 {match.topIssue}</small></span>
+                      <b className={match.average >= 2.5 ? "risk-high" : match.average >= 1.7 ? "risk-medium" : "risk-low"}>負荷 {match.average.toFixed(1)}</b>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="insight-empty">2試合以上レビューすると、試合ごとの課題を並べて比較できます。</p>}
+            </article>
+
+            <article className="insight-card weakness-card">
+              <div className="insight-title"><MapPinned /><div><small>WEAKNESS</small><h3>苦手マップ・エージェント</h3></div></div>
+              <div className="weakness-pairs">
+                <div><span><MapPinned /> 苦手マップ</span><strong>{climbInsights.weakMap?.label || "データ待ち"}</strong><small>{climbInsights.weakMap ? `${climbInsights.weakMap.count}件・負荷 ${climbInsights.weakMap.average.toFixed(1)}` : "マップを設定して解析"}</small></div>
+                <div><span><UsersRound /> 苦手エージェント</span><strong>{climbInsights.weakAgent?.label || "データ待ち"}</strong><small>{climbInsights.weakAgent ? `${climbInsights.weakAgent.count}件・負荷 ${climbInsights.weakAgent.average.toFixed(1)}` : "エージェントを設定して解析"}</small></div>
+              </div>
+            </article>
+
+            <article className="insight-card reason-card">
+              <div className="insight-title"><Activity /><div><small>DEATH CAUSES</small><h3>デス原因</h3></div></div>
+              {climbInsights.reasons.length ? (
+                <div className="reason-list">
+                  {climbInsights.reasons.map((reason) => (
+                    <div key={reason.label}><span><b>{reason.label}</b><small>{reason.count}件</small></span><i><em style={{ width: `${reason.percentage}%` }} /></i></div>
+                  ))}
+                </div>
+              ) : <p className="insight-empty">解析したデスの原因を自動で分類し、偏りを表示します。</p>}
+            </article>
+
+            <article className="insight-card trend-card">
+              <div className="insight-title"><TrendingUp /><div><small>REVIEW TREND</small><h3>反省点の推移・過去比較</h3></div></div>
+              <div className="trend-summary">
+                {climbInsights.trend === null ? <span className="trend-wait"><Activity /> 6件以上で直近5件と前5件を比較</span> : climbInsights.trend <= 0 ? <span className="trend-good"><TrendingDown /> 課題負荷が {Math.abs(climbInsights.trend).toFixed(1)} 改善</span> : <span className="trend-alert"><TrendingUp /> 課題負荷が {climbInsights.trend.toFixed(1)} 上昇</span>}
+              </div>
+              {climbInsights.latest ? (
+                <div className="report-compare">
+                  <div><small>今回</small><p>{climbInsights.latest.review.next_focus}</p></div>
+                  <div><small>過去</small><p>{climbInsights.comparable?.review.next_focus || "同条件の過去レポートはまだありません。"}</p></div>
+                </div>
+              ) : <p className="insight-empty">レポートが増えると、以前の課題と今回の変化を比較できます。</p>}
+            </article>
+          </div>
         </section>
 
         <footer><span><ShieldCheck /> 試合後レビュー専用</span><p>ゲームへの接続・操作・リアルタイム情報の取得は行いません。AIの提案はVOD確認と組み合わせて判断してください。</p></footer>

@@ -83,3 +83,30 @@ test("renders sidebar skeletons deterministically", async () => {
   assert.equal(first, second);
   assert.match(first, /--skeleton-width:70%/);
 });
+
+test("groups sustained local HUD signals into death candidates", async () => {
+  const { extractDeathCandidates } = await vite.ssrLoadModule(
+    "/lib/death-detection.ts",
+  );
+  const samples = [
+    { time: 0, panelScore: 0.04, flashScore: 0 },
+    { time: 1, panelScore: 0.05, flashScore: 0 },
+    { time: 2, panelScore: 0.04, flashScore: 0 },
+    { time: 3, panelScore: 0.65, flashScore: 0.2 },
+    { time: 4, panelScore: 0.76, flashScore: 0.1 },
+    { time: 5, panelScore: 0.7, flashScore: 0 },
+    { time: 6, panelScore: 0.05, flashScore: 0 },
+    { time: 7, panelScore: 0.04, flashScore: 0 },
+    { time: 20, panelScore: 0.05, flashScore: 0 },
+    { time: 21, panelScore: 0.61, flashScore: 0.1 },
+    { time: 22, panelScore: 0.68, flashScore: 0 },
+    { time: 23, panelScore: 0.63, flashScore: 0 },
+    { time: 24, panelScore: 0.04, flashScore: 0 },
+    { time: 25, panelScore: 0.05, flashScore: 0 },
+  ];
+
+  const candidates = extractDeathCandidates(samples, 30);
+  assert.equal(candidates.length, 2);
+  assert.ok(candidates[0].time >= 2 && candidates[0].time <= 3);
+  assert.ok(candidates[1].time >= 20 && candidates[1].time <= 21);
+});
