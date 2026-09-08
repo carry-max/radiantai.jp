@@ -8,6 +8,13 @@
       "when": 1788493350571,
       "tag": "0000_steep_scarlet_spider",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788858406780,
+      "tag": "0001_natural_ezekiel_stane",
+      "breakpoints": true
     }
   ]
 }

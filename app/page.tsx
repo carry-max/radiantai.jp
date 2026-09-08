@@ -62,6 +62,8 @@ import {
 } from "@/components/ui/native-select";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import { MonthlyMissions } from "@/components/monthly-missions";
+import { fingerprintRecording, monthlyPhase, type MonthlySummary } from "@/lib/monthly-missions";
 import {
   type DeathCandidate,
   type DeathDetectionSample,
@@ -293,6 +295,9 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resultRef = useRef<HTMLElement>(null);
   const objectUrlRef = useRef<string | null>(null);
+  const recordingFileRef = useRef<File | null>(null);
+  const analysisRunRef = useRef(0);
+  const monthlyReadRef = useRef(0);
   const reviewEndRef = useRef<number | null>(null);
   const scanRunRef = useRef(0);
   const autoScannedUrlRef = useRef<string | null>(null);
@@ -308,6 +313,13 @@ export default function Home() {
   const [model, setModel] = useState("gpt-5.6-luna");
   const [fileName, setFileName] = useState("");
   const [matchId, setMatchId] = useState("");
+  const [recordingId, setRecordingId] = useState("");
+  const [monthly, setMonthly] = useState<MonthlySummary | null>(null);
+  const [monthlyLoading, setMonthlyLoading] = useState(true);
+  const [monthlyError, setMonthlyError] = useState("");
+  const [monthlyNotice, setMonthlyNotice] = useState("");
+  const [renewMonthly, setRenewMonthly] = useState(false);
+  const [clock, setClock] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -339,6 +351,30 @@ export default function Home() {
     activeMission: null,
     lastCheck: null,
   });
+
+  const reloadMonthly = useCallback(async () => {
+    const readId = ++monthlyReadRef.current;
+    setMonthlyLoading(true);
+    setMonthlyError("");
+    try {
+      const response = await fetch("/api/missions", { cache: "no-store" });
+      const data = await response.json() as MonthlySummary & { error?: string };
+      if (readId !== monthlyReadRef.current) return;
+      if (!response.ok) throw new Error(data.error || "月間ミッションを読み込めませんでした。");
+      setMonthly(data);
+      setClock(Date.parse(data.serverNow));
+    } catch (error) {
+      if (readId === monthlyReadRef.current) setMonthlyError(error instanceof Error ? error.message : "月間ミッションを読み込めませんでした。");
+    } finally { if (readId === monthlyReadRef.current) setMonthlyLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    const start = window.setTimeout(() => void reloadMonthly(), 0);
+    const tick = window.setInterval(() => setClock((current) => current + 60_000), 60_000);
+    const refresh = () => { if (document.visibilityState === "visible") void reloadMonthly(); };
+    document.addEventListener("visibilitychange", refresh);
+    return () => { window.clearTimeout(start); window.clearInterval(tick); document.removeEventListener("visibilitychange", refresh); };
+  }, [reloadMonthly]);
 
   useEffect(() => {
     const loadSavedHistory = window.setTimeout(() => {
@@ -471,6 +507,11 @@ export default function Home() {
       return;
     }
     scanRunRef.current += 1;
+    analysisRunRef.current += 1;
+    setIsAnalyzing(false);
+    recordingFileRef.current = file;
+    setRecordingId("");
+    void fingerprintRecording(file).then((id) => { if (recordingFileRef.current === file) setRecordingId(id); }).catch(() => {});
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     const url = URL.createObjectURL(file);
     objectUrlRef.current = url;
@@ -764,6 +805,7 @@ export default function Home() {
   }, [matchId, saveHistory]);
 
   const analyze = async () => {
+    if (isAnalyzing) return;
     if (frames.length < 2) {
       setStatus({ message: "先にデス地点を登録してください。", tone: "error" });
       return;
@@ -773,28 +815,34 @@ export default function Home() {
       setStatus({ message: "AI設定でOpenAI APIキーを入力してください。", tone: "error" });
       return;
     }
+    const file = recordingFileRef.current;
+    if (!file) return;
     setIsAnalyzing(true);
+    const runId = ++analysisRunRef.current;
     const activeMission = growthProgress.activeMission;
-    const previousMission = activeMission
-      && matchId
-      && activeMission.sourceMatchId !== matchId
-      && !activeMission.checkedMatchIds.includes(matchId)
-      ? activeMission.text
-      : "";
-    setStatus({ message: previousMission ? "AIが今回の場面と前回ミッションを照合しています…" : "AIが5つの場面を時系列で確認しています…", tone: "neutral" });
+    const previousMission = activeMission && matchId && activeMission.sourceMatchId !== matchId && !activeMission.checkedMatchIds.includes(matchId) ? activeMission.text : "";
+    setStatus({ message: monthly?.cycle ? "AIが今回の場面と月間ミッションを照合しています…" : "AIが場面を確認し、30日間のミッションを作成しています…", tone: "neutral" });
     try {
+      const nextRecordingId = recordingId || await fingerprintRecording(file);
+      if (runId !== analysisRunRef.current) return;
+      setRecordingId(nextRecordingId);
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: apiKey.trim(), model, metadata: matchContext, previousMission, frames: frames.map(({ label, dataUrl }) => ({ label, dataUrl })) }),
+        body: JSON.stringify({ apiKey: apiKey.trim(), model, metadata: matchContext, previousMission, monthlyTracking: true, recordingId: nextRecordingId, renewMonthly, frames: frames.map(({ label, dataUrl, time }) => ({ label, dataUrl, time })) }),
       });
-      const data = (await response.json()) as { ok?: boolean; error?: string; review?: Review; model?: string };
+      const data = (await response.json()) as { ok?: boolean; error?: string; review?: Review; model?: string; monthly?: MonthlySummary; monthlyNotice?: string; xpAwarded?: number; monthlySaved?: boolean };
       if (!response.ok || !data.ok || !data.review) throw new Error(data.error || "AI解析に失敗しました。");
+      if (runId !== analysisRunRef.current) { void reloadMonthly(); return; }
+      setMonthlyNotice(data.monthlyNotice || "");
+      if (data.monthly) { monthlyReadRef.current++; setMonthlyLoading(false); setMonthly(data.monthly); setClock(Date.parse(data.monthly.serverNow)); setMonthlyError(""); }
+      if (data.monthlySaved === false) setMonthlyError(data.monthlyNotice || "進捗を保存できませんでした。");
+      if (data.monthlySaved && data.monthly?.cycle && monthlyPhase(data.monthly.cycle, Date.parse(data.monthly.serverNow)) === "active") setRenewMonthly(false);
       finishReview(data.review, data.model || model, "AIレビューが完了しました。");
     } catch (error) {
-      setStatus({ message: error instanceof Error ? error.message : "AI解析に失敗しました。", tone: "error" });
+      if (runId === analysisRunRef.current) setStatus({ message: error instanceof Error ? error.message : "AI解析に失敗しました。", tone: "error" });
     } finally {
-      setIsAnalyzing(false);
+      if (runId === analysisRunRef.current) setIsAnalyzing(false);
     }
   };
 
@@ -931,8 +979,11 @@ export default function Home() {
   }, [historyItems]);
 
   const reviewReady = frames.length >= 2;
-  const growthLevel = Math.floor(growthProgress.totalXp / XP_PER_LEVEL) + 1;
-  const xpInLevel = growthProgress.totalXp % XP_PER_LEVEL;
+  const totalXp = growthProgress.totalXp + (monthly?.totalXp || 0);
+  const growthLevel = Math.floor(totalXp / XP_PER_LEVEL) + 1;
+  const xpInLevel = totalXp % XP_PER_LEVEL;
+  const currentMissionText = growthProgress.activeMission?.text || "最初のAIレビューでミッションが決まります";
+  const lastGrowthCheck = growthProgress.lastCheck;
   const activeTier = entitlement?.plan.startsWith("climb_") ? "Climb" : "Review";
   const activePayment = entitlement?.plan.includes("paypay") ? "PayPay 30日パス" : "カード月額";
 
@@ -977,7 +1028,7 @@ export default function Home() {
       <main id="review" className="main-content">
         <section className="intro-strip" aria-labelledby="page-title">
           <div>
-            <p className="eyebrow">BROWSER PROTOTYPE 0.3</p>
+            <p className="eyebrow">BROWSER PROTOTYPE 0.4</p>
             <h1 id="page-title">1デスを、次のラウンドの武器に。</h1>
             <p className="intro-copy">録画を選ぶだけ。ブラウザがデス候補を自動検出し、前20秒〜後5秒を切り出します。</p>
           </div>
@@ -989,20 +1040,20 @@ export default function Home() {
         <section className="growth-level-strip" aria-labelledby="growth-level-title">
           <div className="level-emblem" aria-label={`成長レベル ${growthLevel}`}><small>GROWTH</small><strong>LV {growthLevel}</strong></div>
           <div className="level-progress-copy">
-            <div><span><Award /> <strong id="growth-level-title">成長レベル</strong><Badge variant="outline">全ユーザー</Badge></span><b>{growthProgress.totalXp} XP</b></div>
+            <div><span><Award /> <strong id="growth-level-title">成長レベル</strong><Badge variant="outline">全ユーザー</Badge></span><b>{totalXp} XP</b></div>
             <Progress value={xpInLevel} aria-label={`次のレベルまで${XP_PER_LEVEL - xpInLevel} XP`} />
             <small>次のレベルまで {XP_PER_LEVEL - xpInLevel} XP</small>
           </div>
           <div className="active-mission-copy">
             <small>ACTIVE MISSION</small>
-            <strong>{growthProgress.activeMission?.text || "最初のAIレビューでミッションが決まります"}</strong>
+            <strong>{currentMissionText}</strong>
             <span><BrainCircuit /> 次の別試合の録画だけでAI判定・クリアで +50 XP</span>
           </div>
-          {growthProgress.lastCheck ? (
-            <div className={`last-mission-check ${growthProgress.lastCheck.status}`}>
+          {lastGrowthCheck ? (
+            <div className={`last-mission-check ${lastGrowthCheck.status}`}>
               <small>LAST CHECK</small>
-              <strong>{growthProgress.lastCheck.status === "cleared" ? `クリア +${growthProgress.lastCheck.xpGained} XP` : growthProgress.lastCheck.status === "improving" ? "改善中・0 XP" : growthProgress.lastCheck.status === "not_cleared" ? "継続中・0 XP" : "判定保留・0 XP"}</strong>
-              <span>{growthProgress.lastCheck.evidence}</span>
+              <strong>{lastGrowthCheck.status === "cleared" ? `クリア +${lastGrowthCheck.xpGained} XP` : lastGrowthCheck.status === "improving" ? "改善中・0 XP" : lastGrowthCheck.status === "not_cleared" ? "継続中・0 XP" : "判定保留・0 XP"}</strong>
+              <span>{lastGrowthCheck.evidence}</span>
             </div>
           ) : (
             <div className="last-mission-check pending">
@@ -1012,6 +1063,14 @@ export default function Home() {
             </div>
           )}
         </section>
+
+        <MonthlyMissions summary={monthly} loading={monthlyLoading} error={monthlyError} notice={monthlyNotice} now={clock} recordingId={recordingId}
+          renewRequested={renewMonthly}
+          onRenew={() => { setRenewMonthly(true); setMonthlyNotice("次の新しい録画のAIレビューが完了すると、30日ミッションを開始します。"); }}
+          onRetry={() => void reloadMonthly()}
+          onChooseVideo={() => fileInputRef.current?.click()}
+          onEvidence={(time) => { if (videoRef.current) { videoRef.current.currentTime = time; videoRef.current.scrollIntoView({ behavior: "smooth", block: "center" }); } }}
+        />
 
         <section className="plan-banner" aria-label="Climb料金プラン">
           <div className="plan-banner-copy">
@@ -1169,8 +1228,8 @@ export default function Home() {
               <Button type="button" size="lg" disabled={!reviewReady || isAnalyzing} onClick={() => void analyze()} className="analyze-button">
                 {isAnalyzing ? <LoaderCircle className="spin" /> : <Sparkles />}{isAnalyzing ? "AI解析中…" : "AIで解析する"}
               </Button>
-              <Button type="button" variant="ghost" onClick={() => finishReview(demoReview(selectedTags[0]), "demo", "デモレビューを表示しました。")} className="demo-button"><Play /> APIキーなしでデモを見る</Button>
-              <p className="cost-note">AIへ送るのは最大5枚。料金は選択モデルとAPI利用量で変わります。</p>
+              <Button type="button" variant="ghost" disabled={isAnalyzing} onClick={() => finishReview(demoReview(selectedTags[0]), "demo", "デモレビューを表示しました。月間ミッション・XPは変更されません。")} className="demo-button"><Play /> APIキーなしでデモを見る</Button>
+              <p className="cost-note">AIへ送るのは最大5枚と課題・試合情報。月間ミッションも同時に判定します。料金はモデルと利用量で変わります。</p>
             </section>
 
             <section className="panel result-panel" ref={resultRef}>

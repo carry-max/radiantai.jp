@@ -1,0 +1,85 @@
+.monthly-panel { margin: 0 0 22px; scroll-margin-top: 88px; }
+.monthly-panel::before { width: 240px; background: linear-gradient(90deg, var(--mint), transparent); }
+.monthly-heading { display: flex; align-items: center; gap: 14px; padding: 22px; border-bottom: 1px solid var(--line); }
+.monthly-icon { display: grid; place-items: center; flex: 0 0 46px; height: 46px; border: 1px solid #39534f; background: #172c29; color: var(--mint); border-radius: 10px; }
+.monthly-heading .eyebrow { font-size: .75rem; color: #90b4a9; letter-spacing: .1em; }
+.monthly-heading h2 { margin: 0; font-size: 1.4rem; line-height: 1.4; }
+.monthly-all-users { border-color: #39534f; color: var(--mint); font-size: .875rem; }
+.monthly-period { display: grid; gap: 4px; margin-left: auto; text-align: right; }
+.monthly-period strong { color: #e3f4ee; font-size: 1rem; }
+.monthly-period span { color: #9ba8ba; font-size: .875rem; }
+.monthly-overview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, .44fr); align-items: center; gap: 24px; padding: 22px; background: linear-gradient(105deg, rgba(120,230,194,.045), transparent 70%); }
+.monthly-label { display: block; color: #8ba699; font-size: .875rem; margin-bottom: 7px; }
+.monthly-overview h3 { margin: 0 0 8px; font-size: 1.1rem; line-height: 1.65; }
+.monthly-overview p { margin: 0; color: #a3b0c2; font-size: .875rem; line-height: 1.8; }
+.monthly-progress { display: grid; gap: 10px; }
+.monthly-progress > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.monthly-progress strong { color: var(--mint); font: 700 1.7rem var(--font-mono); }
+.monthly-progress strong small { font: 500 .875rem var(--font-sans); color: #cad4df; }
+.monthly-progress span, .monthly-progress > small { color: #adbac9; font-size: .875rem; }
+.monthly-progress [data-slot="progress"] { height: 8px; background: #2b3741; }
+.monthly-progress [data-slot="progress-indicator"] { background: var(--mint); }
+.monthly-weeks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 0 22px 22px; }
+.monthly-week { display: flex; flex-direction: column; min-width: 0; padding: 18px; border: 1px solid #303c4b; border-radius: 10px; background: #0b1018; }
+.monthly-week.is-current { border-color: #ff6471; background: linear-gradient(145deg, rgba(255,70,85,.08), #0d121b 60%); }
+.monthly-week.is-cleared { border-color: #40786a; background: linear-gradient(145deg, rgba(120,230,194,.08), #0d141a 60%); }
+.monthly-week-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #b0bdcd; font-size: .875rem; }
+.monthly-week-top [data-slot="badge"] { color: #b0bdcd; border-color: #3d4a5a; font-size: .75rem; }
+.is-current .monthly-week-top [data-slot="badge"] { color: #ffb7be; border-color: #7d3c45; }
+.is-cleared .monthly-week-top [data-slot="badge"] { color: var(--mint); border-color: #40786a; }
+.monthly-stage-icon { display: grid; place-items: center; width: 36px; height: 36px; margin: 18px 0 10px; background: #1b2633; color: #a3b6ca; border-radius: 50%; }
+.is-current .monthly-stage-icon { color: #ff8994; background: #3d242e; }
+.is-cleared .monthly-stage-icon { color: var(--mint); background: #1d3832; }
+.monthly-stage-icon svg { width: 19px; height: 19px; }
+.monthly-week p.monthly-stage-name { color: #9fb2c4; font-size: .75rem; margin-bottom: 4px; }
+.monthly-week h4 { margin: 0 0 9px; color: #f2f6fc; font-size: 1rem; line-height: 1.6; overflow-wrap: anywhere; }
+.monthly-week > p { margin: 0 0 14px; color: #a7b5c7; font-size: 1rem; line-height: 1.8; overflow-wrap: anywhere; }
+.monthly-criteria { padding-top: 12px; border-top: 1px solid #2c3848; margin-bottom: 15px; }
+.monthly-criteria strong { display: flex; align-items: center; gap: 6px; color: #d0dce9; font-size: .875rem; font-weight: 600; }
+.monthly-criteria svg { width: 14px; height: 14px; color: #91b7ac; }
+.monthly-criteria span { display: block; margin-top: 6px; font-size: .875rem; line-height: 1.8; color: #a2b3c6; overflow-wrap: anywhere; }
+.monthly-week-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-top: auto; padding-top: 8px; }
+.monthly-week-foot span { display: flex; align-items: center; gap: 6px; color: #acd9c9; font-size: .875rem; font-weight: 600; }
+.monthly-week-foot svg { width: 16px; height: 16px; }
+.monthly-week-foot small { color: #a5b6c5; font-size: .75rem; }
+.monthly-bottom { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 22px; border-top: 1px solid var(--line); }
+.monthly-bottom p { display: flex; align-items: flex-start; gap: 9px; margin: 0; max-width: 740px; font-size: .875rem; line-height: 1.8; color: #a7b7c8; }
+.monthly-bottom p svg { flex: 0 0 17px; width: 17px; height: 17px; margin-top: 4px; color: #8ebbae; }
+.monthly-empty-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.monthly-bottom button { min-height: 42px; height: auto; white-space: normal; font-size: .875rem; }
+.monthly-completed { display: flex; align-items: center; gap: 8px; color: var(--mint); font-size: .875rem; white-space: nowrap; }
+.monthly-cost-note { margin: 0; padding: 0 22px 18px; color: #93a3b7; font-size: .75rem; line-height: 1.8; }
+.monthly-feedback, .monthly-example-label, .monthly-loading { margin: 0 22px 18px; padding: 13px 15px; font-size: .875rem; line-height: 1.8; color: #bae8d7; background: #13221f; border: 1px solid #345349; border-radius: 8px; }
+.monthly-feedback.error { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: #301c20; border-color: #75434a; color: #ffc5cc; }
+.monthly-example-label { color: #dbc397; background: #292317; border-color: #584932; }
+.monthly-loading { display: flex; align-items: center; gap: 8px; background: transparent; color: #b3c4d8; border: 0; }
+.monthly-loading svg { width: 18px; height: 18px; }
+.monthly-evidence { display: flex; align-items: flex-start; gap: 14px; margin: 0 22px 20px; padding: 18px; border-left: 3px solid #667b95; background: #131c29; }
+.monthly-evidence.cleared { border-left-color: var(--mint); background: #12241f; }
+.monthly-evidence > svg { flex: 0 0 22px; width: 22px; height: 22px; color: #9ebcad; margin-top: 3px; }
+.monthly-evidence > div { min-width: 0; }
+.monthly-evidence strong { color: #d4e4de; font-size: 1rem; line-height: 1.6; }
+.monthly-evidence p { margin: 8px 0 0; color: #a7bbc5; font-size: 1rem; line-height: 1.8; overflow-wrap: anywhere; }
+.monthly-evidence-times { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; font-size: .875rem; color: #adc1d3; }
+.monthly-timestamp { padding: 4px 8px; border: 1px solid #3d5361; border-radius: 5px; font-family: var(--font-mono); }
+@media (max-width: 1150px) {
+  .monthly-weeks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .monthly-bottom { align-items: stretch; flex-direction: column; gap: 14px; }
+  .monthly-empty-actions button { flex: 1; }
+}
+@media (max-width: 760px) {
+  .monthly-heading { flex-wrap: wrap; padding: 18px 14px; gap: 12px; }
+  .monthly-heading h2 { font-size: 1.2rem; }
+  .monthly-all-users { margin-left: 58px; }
+  .monthly-period { width: 100%; margin-left: 58px; text-align: left; }
+  .monthly-overview { grid-template-columns: minmax(0, 1fr); padding: 18px 14px; gap: 18px; }
+  .monthly-weeks { padding: 0 14px 18px; gap: 10px; }
+  .monthly-week { padding: 14px; }
+  .monthly-bottom { padding: 16px 14px; }
+  .monthly-cost-note { padding: 0 14px 18px; }
+  .monthly-feedback, .monthly-example-label, .monthly-loading, .monthly-evidence { margin-left: 14px; margin-right: 14px; }
+}
+@media (max-width: 560px) {
+  .monthly-weeks { grid-template-columns: minmax(0, 1fr); }
+  .monthly-progress > div:first-child { flex-wrap: wrap; }
+}
