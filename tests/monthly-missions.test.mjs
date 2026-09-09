@@ -10,7 +10,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({
   configFile: false, root, appType: "custom", resolve: { alias: { "@": root } },
   plugins: [{ name: "monthly-test-env", resolveId(id) { if (id === "cloudflare:workers") return "\0monthly-env"; }, load(id) { if (id === "\0monthly-env") return "export const env = globalThis.__MONTHLY_TEST_ENV__"; } }],
-  server: { middlewareMode: true },
+  server: { middlewareMode: true, hmr: false },
 });
 after(async () => { await vite.close(); delete globalThis.__MONTHLY_TEST_ENV__; });
 const logic = await vite.ssrLoadModule("/lib/monthly-missions.ts");
@@ -158,7 +158,7 @@ test("analyze endpoint uses server-owned tasks, saves model results, and rejects
     assert.doesNotMatch(monthlyText, /勝手に達成/);
     assert.ok(payload.text.format.schema.properties.mission_check.properties.evidence_times);
     return Response.json({ output_text: JSON.stringify({
-      status: "ok", headline: "改善確認", observed: ["箱の近くで接敵"], main_issue: { category: "トレード", severity: "low", evidence: "確認" },
+      status: "ok", headline: "改善確認", observed: ["箱の近くで接敵"], evidence_frames: [{time:10, observation:"箱の近くで接敵"}], main_issue: { category: "トレード", severity: "low", evidence: "確認" },
       improvements: ["再現する"], next_focus: "次の課題", mission_check: { status: "not_applicable", confidence: "low", evidence: "なし", evidence_times: [] }, monthly_check: clearCheck, confidence: "high", uncertainty: "切り出し場面のみ",
     }) });
   };

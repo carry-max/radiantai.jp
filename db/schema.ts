@@ -49,3 +49,16 @@ export const monthlyMissionReviews = sqliteTable("monthly_mission_reviews", {
   uniqueIndex("idx_monthly_reviews_user_recording").on(table.userId, table.recordingId),
   index("idx_monthly_reviews_user_cycle").on(table.userId, table.cycleId),
 ]);
+
+export const analysisLocks = sqliteTable("analysis_locks", {
+  userId: text("user_id").primaryKey(), token: text("token").notNull(), expiresAt: integer("expires_at").notNull(),
+});
+export const analysisBudgets = sqliteTable("analysis_budgets", {
+  id: text("id").primaryKey(), used: integer("used").notNull().default(0),
+});
+export const analysisRecords = sqliteTable("analysis_records", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), periodKey: text("period_key").notNull(),
+  recordingId: text("recording_id").notNull(), sceneKey: text("scene_key").notNull(), status: text("status").notNull(),
+  resultJson: text("result_json").notNull().default("{}"), usageJson: text("usage_json").notNull().default("{}"),
+  feedback: text("feedback"), createdAt: text("created_at").notNull(),
+}, (table) => [index("idx_analysis_user_period_recording").on(table.userId, table.periodKey, table.recordingId)]);

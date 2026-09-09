@@ -63,6 +63,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { MonthlyMissions } from "@/components/monthly-missions";
+import type { AnalysisAllowance } from "@/lib/analysis-access";
 import { fingerprintRecording, monthlyPhase, type MonthlySummary } from "@/lib/monthly-missions";
 import {
   type DeathCandidate,
@@ -85,6 +86,7 @@ type Review = {
   status: "ok" | "insufficient";
   headline: string;
   observed: string[];
+  evidence_frames?: { time: number; observation: string }[];
   main_issue: {
     category: string;
     severity: "low" | "medium" | "high";
@@ -159,7 +161,7 @@ const GROWTH_KEY = "radiant-review-web-growth-v1";
 const XP_PER_CLEAR = 50;
 const XP_PER_LEVEL = 100;
 const MAX_VOD_SECONDS = 60 * 60;
-const CAPTURE_OFFSETS = [-20, -12, -6, 0, 5];
+const CAPTURE_OFFSETS = [-20, -8, -3, -1, 0, 5];
 const AUTO_SCAN_SAMPLE_SECONDS = 0.75;
 const TAGS = ["先落ち", "トレード不可", "スキル残し", "不要ピーク", "人数有利", "タイミング", "クロスヘア"];
 const MAPS = ["Ascent", "Abyss", "Bind", "Breeze", "Corrode", "Fracture", "Haven", "Icebox", "Lotus", "Pearl", "Split", "Sunset"];
@@ -247,7 +249,7 @@ function demoReview(firstTag?: string): Review {
     status: "ok",
     headline: "撃ち合う前の条件を整える",
     observed: [
-      "登録した時刻までの5場面を、デス直前の時系列として扱います。",
+      "登録した時刻までの場面を、デス直前の時系列として扱います。",
       "味方との距離・残りスキル・相手へ見せた射線を確認する場面です。",
     ],
     main_issue: {
@@ -305,6 +307,16 @@ export default function Home() {
   const [pricingOpen, setPricingOpen] = useState(false);
   const [billingConfigured, setBillingConfigured] = useState(false);
   const [billingLoaded, setBillingLoaded] = useState(false);
+  const [paypayEnabled, setPaypayEnabled] = useState(false);
+  const [serviceReady, setServiceReady] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
+  const [allowance, setAllowance] = useState<AnalysisAllowance | null>(null);
+  const [allowanceError, setAllowanceError] = useState("");
+  const [isDemo, setIsDemo] = useState(false);
+  const [analysisId, setAnalysisId] = useState("");
+  const [feedbackNotice, setFeedbackNotice] = useState("");
+  const [pendingPlan, setPendingPlan] = useState<BillingPlan | null>(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
   const [checkoutPlan, setCheckoutPlan] = useState<BillingPlan | null>(null);
   const [entitlement, setEntitlement] = useState<BillingEntitlement | null>(null);
   const [billingNotice, setBillingNotice] = useState<{ message: string; tone: "neutral" | "success" | "error" } | null>(null);
@@ -339,8 +351,8 @@ export default function Home() {
   const [status, setStatus] = useState({ message: "録画を選ぶとレビューを開始できます。", tone: "neutral" as "neutral" | "success" | "error" });
   const [map, setMap] = useState("");
   const [agent, setAgent] = useState("");
-  const [role, setRole] = useState("イニシエーター");
-  const [side, setSide] = useState("攻め");
+  const [role, setRole] = useState("不明");
+  const [side, setSide] = useState("不明");
   const [round, setRound] = useState("");
   const [note, setNote] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -368,6 +380,20 @@ export default function Home() {
     } finally { if (readId === monthlyReadRef.current) setMonthlyLoading(false); }
   }, []);
 
+  const reloadAllowance = useCallback(async () => {
+    try {
+      const response = await fetch("/api/analyze", { cache: "no-store" });
+      const data = await response.json() as { configured?: boolean; signedIn?: boolean; allowance?: AnalysisAllowance | null; error?: string };
+      setServiceReady(Boolean(data.configured)); setSignedIn(Boolean(data.signedIn));
+      setAllowance(data.allowance || null);
+      setAllowanceError(response.ok ? "" : data.error || "解析枠を確認できませんでした。");
+    } catch { setAllowanceError("解析枠を読み込めませんでした。再読み込みしてください。"); }
+  }, []);
+  useEffect(() => {
+    const start = window.setTimeout(() => void reloadAllowance(), 0);
+    return () => window.clearTimeout(start);
+  }, [reloadAllowance]);
+
   useEffect(() => {
     const start = window.setTimeout(() => void reloadMonthly(), 0);
     const tick = window.setInterval(() => setClock((current) => current + 60_000), 60_000);
@@ -380,7 +406,7 @@ export default function Home() {
     const loadSavedHistory = window.setTimeout(() => {
       try {
         const saved = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
-        if (Array.isArray(saved)) setHistoryItems(saved.slice(0, 50));
+        if (Array.isArray(saved)) setHistoryItems(saved.filter((entry: HistoryEntry) => entry.model !== "demo").slice(0, 50));
       } catch {
         localStorage.removeItem(HISTORY_KEY);
       }
@@ -451,9 +477,10 @@ export default function Home() {
         }
 
         const response = await fetch("/api/billing/status", { cache: "no-store" });
-        const result = (await response.json()) as { configured?: boolean; entitlement?: BillingEntitlement | null };
+        const result = (await response.json()) as { configured?: boolean; paypayEnabled?: boolean; entitlement?: BillingEntitlement | null };
         if (active) {
           setBillingConfigured(Boolean(result.configured));
+          setPaypayEnabled(Boolean(result.paypayEnabled));
           if (result.entitlement) setEntitlement(result.entitlement);
         }
       } catch (error) {
@@ -494,7 +521,7 @@ export default function Home() {
       review: nextReview,
     };
     setHistoryItems((current) => {
-      const next = [entry, ...current].slice(0, 50);
+      const next = [entry, ...current.filter(item => !(item.matchId === entry.matchId && item.metadata.timestamp === entry.metadata.timestamp))].slice(0, 50);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
       return next;
     });
@@ -537,7 +564,7 @@ export default function Home() {
 
   const captureFramesAt = useCallback(async (markedAt: number, source: "auto" | "manual") => {
     const video = videoRef.current;
-    if (!video || !videoReady || videoTooLong || isCapturing) return;
+    if (!video || !videoReady || videoTooLong || isCapturing || isAnalyzing) return;
     video.pause();
     const targets = CAPTURE_OFFSETS.map((offset) => ({ offset, time: Math.max(0, Math.min(markedAt + offset, video.duration - 0.05)) }))
       .filter((item, index, all) => all.findIndex((other) => Math.abs(other.time - item.time) < 0.25) === index);
@@ -545,6 +572,7 @@ export default function Home() {
       setStatus({ message: "開始直後すぎるため、この候補は切り出せません。", tone: "error" });
       return;
     }
+    setReview(null); setAnalysisId(""); setIsDemo(false); setFeedbackNotice("");
     setIsCapturing(true);
     setDeathSource(source);
     setFrames([]);
@@ -571,7 +599,7 @@ export default function Home() {
     } finally {
       setIsCapturing(false);
     }
-  }, [isCapturing, videoReady, videoTooLong]);
+  }, [isAnalyzing, isCapturing, videoReady, videoTooLong]);
 
   const captureFrames = useCallback(async () => {
     const video = videoRef.current;
@@ -755,8 +783,10 @@ export default function Home() {
 
   const finishReview = useCallback((nextReview: Review, usedModel: string, message: string) => {
     setReview(nextReview);
-    saveHistory(nextReview, usedModel);
-    if (usedModel !== "demo") {
+    setIsDemo(usedModel === "demo");
+    if (usedModel === "demo") { setAnalysisId(""); setFeedbackNotice(""); }
+    if (usedModel !== "demo") saveHistory(nextReview, usedModel);
+    if (usedModel !== "demo" && nextReview.status === "ok") {
       setGrowthProgress((current) => {
         const now = new Date().toISOString();
         const createMission = (): GrowthMission => ({
@@ -810,9 +840,8 @@ export default function Home() {
       setStatus({ message: "先にデス地点を登録してください。", tone: "error" });
       return;
     }
-    if (!apiKey.trim()) {
-      setSettingsOpen(true);
-      setStatus({ message: "AI設定でOpenAI APIキーを入力してください。", tone: "error" });
+    if (!apiKey.trim() && !serviceReady) {
+      setStatus({ message: "AIレビューは準備中です。録画の切り出しとサンプルをお試しください。", tone: "neutral" });
       return;
     }
     const file = recordingFileRef.current;
@@ -829,19 +858,22 @@ export default function Home() {
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: apiKey.trim(), model, metadata: matchContext, previousMission, monthlyTracking: true, recordingId: nextRecordingId, renewMonthly, frames: frames.map(({ label, dataUrl, time }) => ({ label, dataUrl, time })) }),
+        body: JSON.stringify({ ...(apiKey.trim() ? { apiKey: apiKey.trim(), model } : {}), deathTimestamp, metadata: matchContext, previousMission, monthlyTracking: true, recordingId: nextRecordingId, renewMonthly, frames: frames.map(({ label, dataUrl, time }) => ({ label, dataUrl, time })) }),
       });
-      const data = (await response.json()) as { ok?: boolean; error?: string; review?: Review; model?: string; monthly?: MonthlySummary; monthlyNotice?: string; xpAwarded?: number; monthlySaved?: boolean };
+      const data = (await response.json()) as { ok?: boolean; error?: string; review?: Review; model?: string; monthly?: MonthlySummary; monthlyNotice?: string; xpAwarded?: number; monthlySaved?: boolean; analysisId?: string; cached?: boolean };
       if (!response.ok || !data.ok || !data.review) throw new Error(data.error || "AI解析に失敗しました。");
       if (runId !== analysisRunRef.current) { void reloadMonthly(); return; }
       setMonthlyNotice(data.monthlyNotice || "");
       if (data.monthly) { monthlyReadRef.current++; setMonthlyLoading(false); setMonthly(data.monthly); setClock(Date.parse(data.monthly.serverNow)); setMonthlyError(""); }
       if (data.monthlySaved === false) setMonthlyError(data.monthlyNotice || "進捗を保存できませんでした。");
       if (data.monthlySaved && data.monthly?.cycle && monthlyPhase(data.monthly.cycle, Date.parse(data.monthly.serverNow)) === "active") setRenewMonthly(false);
-      finishReview(data.review, data.model || model, "AIレビューが完了しました。");
+      setAnalysisId(data.analysisId || ""); setFeedbackNotice("");
+      if (data.cached) void reloadMonthly();
+      finishReview(data.review, data.model || model, data.cached ? "保存済みのレビューを表示しました。解析枠は消費しません。" : data.review.status === "insufficient" ? "根拠が不足しているため判定保留です。試合枠は消費していません。" : "AIレビューが完了しました。次の試合で直すことを1つ確認しましょう。");
     } catch (error) {
       if (runId === analysisRunRef.current) setStatus({ message: error instanceof Error ? error.message : "AI解析に失敗しました。", tone: "error" });
     } finally {
+      void reloadAllowance();
       if (runId === analysisRunRef.current) setIsAnalyzing(false);
     }
   };
@@ -893,10 +925,11 @@ export default function Home() {
   }, [captureFramesAt, isCapturing, isDetectingDeaths]);
 
   const growthInsights = useMemo(() => {
+    const verifiedHistory = historyItems.filter(entry => entry.model !== "demo" && entry.review.status === "ok");
     const severityValue = { low: 1, medium: 2, high: 3 } as const;
     const rankedDimension = (selector: (entry: HistoryEntry) => string) => {
       const groups = new Map<string, { count: number; total: number }>();
-      historyItems.forEach((entry) => {
+      verifiedHistory.forEach((entry) => {
         const label = selector(entry).trim();
         if (!label) return;
         const current = groups.get(label) || { count: 0, total: 0 };
@@ -910,7 +943,7 @@ export default function Home() {
     };
 
     const matchGroups = new Map<string, { label: string; createdAt: string; entries: HistoryEntry[] }>();
-    historyItems.forEach((entry) => {
+    verifiedHistory.forEach((entry) => {
       const key = entry.matchId || `${entry.createdAt.slice(0, 10)}:${entry.metadata.map}:${entry.metadata.agent || entry.metadata.role}`;
       const current = matchGroups.get(key) || {
         label: entry.fileName?.replace(/\.[^.]+$/, "") || `${entry.metadata.map || "Map未設定"} / ${entry.metadata.agent || entry.metadata.role}`,
@@ -940,7 +973,7 @@ export default function Home() {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
     const categoryCounts = new Map<string, number>();
-    historyItems.forEach((entry) => {
+    verifiedHistory.forEach((entry) => {
       const category = entry.review.main_issue.category;
       categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1);
     });
@@ -954,14 +987,14 @@ export default function Home() {
       (total, entry) => total + severityValue[entry.review.main_issue.severity],
       0,
     ) / Math.max(1, entries.length);
-    const recent = historyItems.slice(0, 5);
-    const previous = historyItems.slice(5, 10);
+    const recent = verifiedHistory.slice(0, 5);
+    const previous = verifiedHistory.slice(5, 10);
     const trend = recent.length >= 3 && previous.length >= 3
       ? averageSeverity(recent) - averageSeverity(previous)
       : null;
-    const latest = historyItems[0] || null;
+    const latest = verifiedHistory[0] || null;
     const comparable = latest
-      ? historyItems.slice(1).find((entry) => (
+      ? verifiedHistory.slice(1).find((entry) => (
         entry.metadata.map === latest.metadata.map
         && (entry.metadata.agent || entry.metadata.role) === (latest.metadata.agent || latest.metadata.role)
       )) || historyItems[1] || null
@@ -1011,6 +1044,29 @@ export default function Home() {
     }
   };
 
+  const submitFeedback = async (rating: "helpful" | "incorrect") => {
+    if (!analysisId || isDemo) return;
+    setFeedbackNotice("評価を保存しています…");
+    try {
+      const response = await fetch("/api/review-feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: analysisId, rating }) });
+      if (!response.ok) throw new Error();
+      setFeedbackNotice(rating === "helpful" ? "役立ったという評価を保存しました。" : "見直しが必要という評価を保存しました。");
+    } catch { setFeedbackNotice("評価を保存できませんでした。もう一度お試しください。"); }
+  };
+  const cancelRenewal = async () => {
+    setCancelBusy(true);
+    try {
+      const response = await fetch("/api/billing/cancel", { method: "POST" });
+      const data = await response.json() as { error?: string; message?: string };
+      if (!response.ok) throw new Error(data.error || "更新停止を確認できませんでした。");
+      setBillingNotice({ tone: "success", message: data.message || "次回の自動更新を停止しました。" });
+    } catch (error) { setBillingNotice({ tone: "error", message: error instanceof Error ? error.message : "更新停止を確認できませんでした。" }); }
+    finally { setCancelBusy(false); }
+  };
+  const currentScenes = allowance?.recordings.find(item => item.recordingId === recordingId)?.scenesUsed || 0;
+  const pendingPrice = pendingPlan?.startsWith("climb_") ? 1800 : 900;
+  const pendingMatches = pendingPlan?.startsWith("climb_") ? 10 : 5;
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -1020,65 +1076,23 @@ export default function Home() {
         </a>
         <div className="top-actions">
           <span className="local-state"><ShieldCheck aria-hidden="true" /> 動画は端末内で処理</span>
-          <Button type="button" variant="outline" onClick={() => setPricingOpen(true)} className="top-pricing"><Wallet /> {entitlement?.status === "active" ? `残り${entitlement.remainingDays}日` : "料金・PayPay"}</Button>
-          <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)} className="top-settings"><Settings2 /> AI設定</Button>
+          <Button type="button" variant="outline" onClick={() => setPricingOpen(true)} className="top-pricing"><Wallet /> {entitlement?.status === "active" ? `残り${entitlement.remainingDays}日` : "料金・利用状況"}</Button>
+          <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)} className="top-settings"><Settings2 /> 解析について</Button>
         </div>
       </header>
 
       <main id="review" className="main-content">
         <section className="intro-strip" aria-labelledby="page-title">
           <div>
-            <p className="eyebrow">BROWSER PROTOTYPE 0.4</p>
+            <p className="eyebrow">試合後の振り返り · 日本語AIレビュー</p>
             <h1 id="page-title">1デスを、次のラウンドの武器に。</h1>
-            <p className="intro-copy">録画を選ぶだけ。ブラウザがデス候補を自動検出し、前20秒〜後5秒を切り出します。</p>
+            <p className="intro-copy">同じ死に方を、次の試合で繰り返さない。録画からデス候補を見つけ、まず直すことを1つに絞ります。</p>
+            <p className="intro-privacy">動画は端末内で処理。AI解析時だけ、最大6枚の画像と入力した試合情報を送信します。</p>
+            <Button type="button" variant="ghost" className="intro-sample" disabled={isAnalyzing} onClick={() => finishReview(demoReview(), "demo", "サンプルです。あなたの録画は解析せず、履歴・XP・解析枠を変更しません。")}><Play /> 録画なしでサンプルを見る</Button>
           </div>
           <div className="capability-row" aria-label="対応範囲">
             <span><Clock3 /> 最大60分</span><span><MonitorUp /> 1080p / 60fps</span><span><Film /> MP4・WebM・MOV</span>
           </div>
-        </section>
-
-        <section className="growth-level-strip" aria-labelledby="growth-level-title">
-          <div className="level-emblem" aria-label={`成長レベル ${growthLevel}`}><small>GROWTH</small><strong>LV {growthLevel}</strong></div>
-          <div className="level-progress-copy">
-            <div><span><Award /> <strong id="growth-level-title">成長レベル</strong><Badge variant="outline">全ユーザー</Badge></span><b>{totalXp} XP</b></div>
-            <Progress value={xpInLevel} aria-label={`次のレベルまで${XP_PER_LEVEL - xpInLevel} XP`} />
-            <small>次のレベルまで {XP_PER_LEVEL - xpInLevel} XP</small>
-          </div>
-          <div className="active-mission-copy">
-            <small>ACTIVE MISSION</small>
-            <strong>{currentMissionText}</strong>
-            <span><BrainCircuit /> 次の別試合の録画だけでAI判定・クリアで +50 XP</span>
-          </div>
-          {lastGrowthCheck ? (
-            <div className={`last-mission-check ${lastGrowthCheck.status}`}>
-              <small>LAST CHECK</small>
-              <strong>{lastGrowthCheck.status === "cleared" ? `クリア +${lastGrowthCheck.xpGained} XP` : lastGrowthCheck.status === "improving" ? "改善中・0 XP" : lastGrowthCheck.status === "not_cleared" ? "継続中・0 XP" : "判定保留・0 XP"}</strong>
-              <span>{lastGrowthCheck.evidence}</span>
-            </div>
-          ) : (
-            <div className="last-mission-check pending">
-              <small>LAST CHECK</small>
-              <strong>AI判定待ち</strong>
-              <span>ミッション作成後、次の別試合で初回判定</span>
-            </div>
-          )}
-        </section>
-
-        <MonthlyMissions summary={monthly} loading={monthlyLoading} error={monthlyError} notice={monthlyNotice} now={clock} recordingId={recordingId}
-          renewRequested={renewMonthly}
-          onRenew={() => { setRenewMonthly(true); setMonthlyNotice("次の新しい録画のAIレビューが完了すると、30日ミッションを開始します。"); }}
-          onRetry={() => void reloadMonthly()}
-          onChooseVideo={() => fileInputRef.current?.click()}
-          onEvidence={(time) => { if (videoRef.current) { videoRef.current.currentTime = time; videoRef.current.scrollIntoView({ behavior: "smooth", block: "center" }); } }}
-        />
-
-        <section className="plan-banner" aria-label="Climb料金プラン">
-          <div className="plan-banner-copy">
-            <span className="plan-emblem"><QrCode /></span>
-            <div><p><Badge>CLIMB</Badge> PAYPAY QR + STRIPE</p><strong>上位Climb：税込1,800円でAI解析10試合</strong><span>Reviewは900円・5試合。どちらも1試合あたり180円相当。PayPayは30日・自動更新なし。</span></div>
-          </div>
-          <div className="plan-banner-price"><small>税込</small><strong>¥1,800</strong><span>/ 30日・月</span></div>
-          <Button type="button" onClick={() => setPricingOpen(true)}>料金と支払い方法を見る</Button>
         </section>
 
         <section className="pipeline" aria-label="処理の流れ">
@@ -1161,7 +1175,7 @@ export default function Home() {
                         type="button"
                         className={selectedDeathId === candidate.id ? "selected" : ""}
                         aria-pressed={selectedDeathId === candidate.id}
-                        disabled={isCapturing || isDetectingDeaths}
+                        disabled={isCapturing || isDetectingDeaths || isAnalyzing}
                         onClick={() => void chooseDeathCandidate(candidate)}
                       >
                         <small>DEATH {String(index + 1).padStart(2, "0")}</small>
@@ -1174,7 +1188,7 @@ export default function Home() {
               ) : null}
               <div className="manual-fallback">
                 <p>検出漏れのときだけ、デス直後で追加 <kbd>D</kbd></p>
-                <Button type="button" variant="ghost" disabled={!videoReady || videoTooLong || isDetectingDeaths || isCapturing} onClick={() => void captureFrames()}>
+                <Button type="button" variant="ghost" disabled={!videoReady || videoTooLong || isDetectingDeaths || isCapturing || isAnalyzing} onClick={() => void captureFrames()}>
                   <Crosshair /> 現在時刻を追加
                 </Button>
               </div>
@@ -1190,7 +1204,7 @@ export default function Home() {
             </section>
 
             <section className="panel frames-panel">
-              <SectionHeading step="02" eyebrow="TIMELINE SAMPLES" title="解析フレーム" trailing={<Badge variant="outline">{frames.length} / 5</Badge>} />
+              <SectionHeading step="02" eyebrow="TIMELINE SAMPLES" title="解析フレーム" trailing={<Badge variant="outline">{frames.length} / {CAPTURE_OFFSETS.length}</Badge>} />
               {frames.length ? (
                 <div className="frame-grid">
                   {frames.map((frame) => (
@@ -1206,11 +1220,18 @@ export default function Home() {
 
           <aside className="secondary-column">
             <section className="panel context-panel">
-              <SectionHeading step="03" eyebrow="ADD CONTEXT" title="試合情報" />
+              <div className="allowance-box" aria-live="polite">
+                <strong>{apiKey.trim() ? "自分のAPIキーで解析 · 別料金" : !serviceReady ? "AIレビューは準備中" : allowance ? `${allowance.tier} · 新しい試合の残り枠 ${allowance.remaining} / ${allowance.limit}` : "解析にはログインが必要です"}</strong>
+                <p>{apiKey.trim() ? "API料金はご自身のOpenAIアカウントに発生します。プランの試合枠は使いません。" : serviceReady ? `1試合につき選んだ最大3場面。${recordingId ? `この録画は${currentScenes} / 3場面を解析済み。` : "無料体験は1アカウント1試合です。"}` : "録画の切り出しとサンプルは利用できます。購入・請求はありません。"}</p>
+                {allowanceError ? <p role="alert">{allowanceError}</p> : null}
+                <Button variant="ghost" size="sm" onClick={() => void reloadAllowance()}><RotateCcw /> 利用状況を更新</Button>
+                {serviceReady && !signedIn ? <a href="/signin-with-chatgpt?return_to=%2F" target="_top">ログインして無料体験</a> : null}
+              </div>
+              <SectionHeading step="03" eyebrow="ADD CONTEXT" title="試合情報（任意）" />
               <div className="form-grid">
                 <label><span>マップ</span><NativeSelect value={map} onChange={(event) => setMap(event.target.value)}><NativeSelectOption value="">選択</NativeSelectOption>{MAPS.map((item) => <NativeSelectOption key={item}>{item}</NativeSelectOption>)}</NativeSelect></label>
                 <label><span>エージェント</span><Input value={agent} onChange={(event) => setAgent(event.target.value)} maxLength={40} placeholder="例：Sova" /></label>
-                <label><span>ロール</span><NativeSelect value={role} onChange={(event) => setRole(event.target.value)}>{["イニシエーター", "デュエリスト", "コントローラー", "センチネル"].map((item) => <NativeSelectOption key={item}>{item}</NativeSelectOption>)}</NativeSelect></label>
+                <label><span>ロール</span><NativeSelect value={role} onChange={(event) => setRole(event.target.value)}>{["不明", "イニシエーター", "デュエリスト", "コントローラー", "センチネル"].map((item) => <NativeSelectOption key={item}>{item}</NativeSelectOption>)}</NativeSelect></label>
                 <label><span>攻守</span><NativeSelect value={side} onChange={(event) => setSide(event.target.value)}>{["攻め", "守り", "不明"].map((item) => <NativeSelectOption key={item}>{item}</NativeSelectOption>)}</NativeSelect></label>
                 <label><span>ラウンド</span><Input value={round} onChange={(event) => setRound(event.target.value)} type="number" min="1" max="50" placeholder="例：7" /></label>
               </div>
@@ -1225,18 +1246,18 @@ export default function Home() {
               <div className={`status-line ${status.tone}`} role="status" aria-live="polite">
                 {status.tone === "error" ? <AlertTriangle /> : status.tone === "success" ? <CheckCircle2 /> : <Clock3 />}<span>{status.message}</span>
               </div>
-              <Button type="button" size="lg" disabled={!reviewReady || isAnalyzing} onClick={() => void analyze()} className="analyze-button">
-                {isAnalyzing ? <LoaderCircle className="spin" /> : <Sparkles />}{isAnalyzing ? "AI解析中…" : "AIで解析する"}
+              <Button type="button" size="lg" disabled={!reviewReady || isAnalyzing || (!apiKey.trim() && (!serviceReady || !signedIn || Boolean(allowanceError)))} onClick={() => void analyze()} className="analyze-button">
+                {isAnalyzing ? <LoaderCircle className="spin" /> : <Sparkles />}{isAnalyzing ? "AI解析中…" : "この場面の改善点を確認"}
               </Button>
-              <Button type="button" variant="ghost" disabled={isAnalyzing} onClick={() => finishReview(demoReview(selectedTags[0]), "demo", "デモレビューを表示しました。月間ミッション・XPは変更されません。")} className="demo-button"><Play /> APIキーなしでデモを見る</Button>
-              <p className="cost-note">AIへ送るのは最大5枚と課題・試合情報。月間ミッションも同時に判定します。料金はモデルと利用量で変わります。</p>
+              <Button type="button" variant="ghost" disabled={isAnalyzing} onClick={() => finishReview(demoReview(selectedTags[0]), "demo", "デモレビューを表示しました。月間ミッション・XPは変更されません。")} className="demo-button"><Play /> サンプルレビューを見る</Button>
+              <p className="cost-note">最大6枚の画像・試合情報・練習課題をOpenAIへ送ります。動画全体・音声は送りません。{apiKey.trim() ? "自分のAPIキーでの解析は別途API料金が発生します。" : "無料体験・有料プランの範囲内では追加料金はありません。"}</p>
             </section>
 
             <section className="panel result-panel" ref={resultRef}>
-              <SectionHeading step="04" eyebrow="COACHING OUTPUT" title="今回のレビュー" trailing={review ? <Badge className={`confidence ${review.confidence}`}>確度 {review.confidence}</Badge> : undefined} />
+              <SectionHeading step="04" eyebrow="COACHING OUTPUT" title="今回のレビュー" trailing={review ? <Badge className={`confidence ${review.confidence}`}>{isDemo ? "表示例・未解析" : review.status === "insufficient" ? "判定保留" : `確度 ${({low: "低", medium: "中", high: "高"})[review.confidence]}`}</Badge> : undefined} />
               {review ? (
                 <div className="review-content">
-                  <p className="review-kicker">NEXT ROUND PRIORITY</p>
+                  <p className="review-kicker">{isDemo ? "サンプル · あなたの録画の解析結果ではありません" : "次の試合で直すこと"}</p>
                   <h3>{review.headline}</h3>
                   {review.mission_check && review.mission_check.status !== "not_applicable" ? (
                     <div className={`mission-check-card ${review.mission_check.status}`}>
@@ -1244,13 +1265,20 @@ export default function Home() {
                       <div><small>前回ミッションのAI判定</small><strong>{review.mission_check.status === "cleared" ? `クリア・+${XP_PER_CLEAR} XP` : review.mission_check.status === "improving" ? "改善中・XPはクリア後" : review.mission_check.status === "not_cleared" ? "未クリア・次の録画へ継続" : "判定保留・次の録画へ継続"}</strong><p>{review.mission_check.evidence}</p></div>
                     </div>
                   ) : null}
-                  <div className="focus-card"><Crosshair /><div><small>現在の成長ミッション</small><strong>{growthProgress.activeMission?.text || review.next_focus}</strong></div></div>
+                  <div className="focus-card"><Crosshair /><div><small>現在の成長ミッション</small><strong>{isDemo ? review.next_focus : growthProgress.activeMission?.text || review.next_focus}</strong></div></div>
                   <div className="issue-card"><div><span>主な問題</span><Badge variant="outline">{review.main_issue.category}</Badge></div><p>{review.main_issue.evidence}</p></div>
                   <div className="review-block"><h4>画面で確認できたこと</h4><ul>{review.observed.map((item) => <li key={item}>{item}</li>)}</ul></div>
+                  {!isDemo && review.evidence_frames?.length ? <div className="review-block"><h4>結論の根拠となる場面</h4><div className="evidence-list">{review.evidence_frames.map((item, index) => {
+                    const frame = frames.find(frame => Math.abs(frame.time - item.time) < 0.01);
+                    return <button type="button" key={`${item.time}-${index}`} className="evidence-item" onClick={() => { if (videoRef.current) { videoRef.current.currentTime = item.time; videoRef.current.scrollIntoView({ behavior: "smooth", block: "center" }); } }}>
+                      {frame ? <img src={frame.dataUrl} alt={`${formatTime(item.time)}の根拠画像`} /> : null}<span><strong><Play size={14} /> {formatTime(item.time)}を確認</strong>{item.observation}</span>
+                    </button>;
+                  })}</div></div> : null}
                   <div className="review-block"><h4>改善アクション</h4><ol>{review.improvements.map((item) => <li key={item}>{item}</li>)}</ol></div>
+                  {!isDemo && analysisId ? <div className="review-feedback"><span>このレビューは役立ちましたか？</span><div><Button size="sm" variant="outline" onClick={() => void submitFeedback("helpful")}>役立った</Button><Button size="sm" variant="outline" onClick={() => void submitFeedback("incorrect")}>根拠・指摘に疑問がある</Button></div><p role="status">{feedbackNotice}</p></div> : null}
                   <p className="uncertainty"><AlertTriangle />{review.uncertainty}</p>
                 </div>
-              ) : <div className="empty-result"><span><BrainCircuit /></span><strong>レビュー待ち</strong><p>5枚の時系列から、事実・問題・改善行動を分けて整理します。</p></div>}
+              ) : <div className="empty-result"><span><BrainCircuit /></span><strong>レビュー待ち</strong><p>6枚の時系列から、事実・問題・改善行動を分けて整理します。</p></div>}
             </section>
           </aside>
         </div>
@@ -1269,6 +1297,50 @@ export default function Home() {
           ) : <div className="empty-history"><History /><span>解析結果はこのブラウザに最大50件保存されます。</span></div>}
         </section>
 
+        <section className="growth-level-strip" aria-labelledby="growth-level-title">
+          <div className="level-emblem" aria-label={`成長レベル ${growthLevel}`}><small>GROWTH</small><strong>LV {growthLevel}</strong></div>
+          <div className="level-progress-copy">
+            <div><span><Award /> <strong id="growth-level-title">成長レベル</strong><Badge variant="outline">全ユーザー</Badge></span><b>{totalXp} XP</b></div>
+            <Progress value={xpInLevel} aria-label={`次のレベルまで${XP_PER_LEVEL - xpInLevel} XP`} />
+            <small>次のレベルまで {XP_PER_LEVEL - xpInLevel} XP</small>
+          </div>
+          <div className="active-mission-copy">
+            <small>ACTIVE MISSION</small>
+            <strong>{currentMissionText}</strong>
+            <span><BrainCircuit /> 次の別試合の録画だけでAI判定・クリアで +50 XP</span>
+          </div>
+          {lastGrowthCheck ? (
+            <div className={`last-mission-check ${lastGrowthCheck.status}`}>
+              <small>LAST CHECK</small>
+              <strong>{lastGrowthCheck.status === "cleared" ? `クリア +${lastGrowthCheck.xpGained} XP` : lastGrowthCheck.status === "improving" ? "改善中・0 XP" : lastGrowthCheck.status === "not_cleared" ? "継続中・0 XP" : "判定保留・0 XP"}</strong>
+              <span>{lastGrowthCheck.evidence}</span>
+            </div>
+          ) : (
+            <div className="last-mission-check pending">
+              <small>LAST CHECK</small>
+              <strong>AI判定待ち</strong>
+              <span>ミッション作成後、次の別試合で初回判定</span>
+            </div>
+          )}
+        </section>
+
+        <MonthlyMissions summary={monthly} loading={monthlyLoading} error={monthlyError} notice={monthlyNotice} now={clock} recordingId={recordingId}
+          renewRequested={renewMonthly}
+          onRenew={() => { setRenewMonthly(true); setMonthlyNotice("次の新しい録画のAIレビューが完了すると、30日ミッションを開始します。"); }}
+          onRetry={() => void reloadMonthly()}
+          onChooseVideo={() => fileInputRef.current?.click()}
+          onEvidence={(time) => { if (videoRef.current) { videoRef.current.currentTime = time; videoRef.current.scrollIntoView({ behavior: "smooth", block: "center" }); } }}
+        />
+
+        <section className="plan-banner" aria-label="Climb料金プラン">
+          <div className="plan-banner-copy">
+            <span className="plan-emblem"><QrCode /></span>
+            <div><p><Badge>CLIMB</Badge> PAYPAY QR + STRIPE</p><strong>上位Climb：税込1,800円でAI解析10試合</strong><span>Reviewは900円・5試合。どちらも1試合あたり180円相当。PayPayは30日・自動更新なし。</span></div>
+          </div>
+          <div className="plan-banner-price"><small>税込</small><strong>¥1,800</strong><span>/ 30日・月</span></div>
+          <Button type="button" onClick={() => setPricingOpen(true)}>料金と支払い方法を見る</Button>
+        </section>
+
         <section className="panel growth-panel">
           <SectionHeading
             step="06"
@@ -1276,6 +1348,7 @@ export default function Home() {
             title="成長ダッシュボード"
             trailing={<Badge variant="outline" className="local-insight-badge"><ShieldCheck /> 全ユーザー利用可</Badge>}
           />
+          <p className="cost-note">判定できた実レビューだけを集計します。指摘の強さはAIの3段階評価の平均です。選んだ場面・マップ・対戦状況で変わるため、実力やランクの向上を表す指標ではありません。</p>
           <div className="growth-grid">
             <article className="insight-card match-comparison">
               <div className="insight-title"><BarChart3 /><div><small>MATCH COMPARISON</small><h3>複数試合比較</h3></div><Badge variant="outline">{growthInsights.matches.length}試合</Badge></div>
@@ -1285,7 +1358,7 @@ export default function Home() {
                     <div key={`${match.createdAt}-${match.label}`}>
                       <time>{new Intl.DateTimeFormat("ja-JP", { month: "numeric", day: "numeric" }).format(new Date(match.createdAt))}</time>
                       <span><strong>{match.label}</strong><small>{match.entries.length}デス・最多 {match.topIssue}</small></span>
-                      <b className={match.average >= 2.5 ? "risk-high" : match.average >= 1.7 ? "risk-medium" : "risk-low"}>負荷 {match.average.toFixed(1)}</b>
+                      <b className={match.average >= 2.5 ? "risk-high" : match.average >= 1.7 ? "risk-medium" : "risk-low"}>指摘 {match.average.toFixed(1)}</b>
                     </div>
                   ))}
                 </div>
@@ -1295,8 +1368,8 @@ export default function Home() {
             <article className="insight-card weakness-card">
               <div className="insight-title"><MapPinned /><div><small>WEAKNESS</small><h3>苦手マップ・エージェント</h3></div></div>
               <div className="weakness-pairs">
-                <div><span><MapPinned /> 苦手マップ</span><strong>{growthInsights.weakMap?.label || "データ待ち"}</strong><small>{growthInsights.weakMap ? `${growthInsights.weakMap.count}件・負荷 ${growthInsights.weakMap.average.toFixed(1)}` : "マップを設定して解析"}</small></div>
-                <div><span><UsersRound /> 苦手エージェント</span><strong>{growthInsights.weakAgent?.label || "データ待ち"}</strong><small>{growthInsights.weakAgent ? `${growthInsights.weakAgent.count}件・負荷 ${growthInsights.weakAgent.average.toFixed(1)}` : "エージェントを設定して解析"}</small></div>
+                <div><span><MapPinned /> 苦手マップ</span><strong>{growthInsights.weakMap?.label || "データ待ち"}</strong><small>{growthInsights.weakMap ? `${growthInsights.weakMap.count}件・指摘の強さ ${growthInsights.weakMap.average.toFixed(1)}` : "マップを設定して解析"}</small></div>
+                <div><span><UsersRound /> 苦手エージェント</span><strong>{growthInsights.weakAgent?.label || "データ待ち"}</strong><small>{growthInsights.weakAgent ? `${growthInsights.weakAgent.count}件・指摘の強さ ${growthInsights.weakAgent.average.toFixed(1)}` : "エージェントを設定して解析"}</small></div>
               </div>
             </article>
 
@@ -1314,7 +1387,7 @@ export default function Home() {
             <article className="insight-card trend-card">
               <div className="insight-title"><TrendingUp /><div><small>REVIEW TREND</small><h3>反省点の推移・過去比較</h3></div></div>
               <div className="trend-summary">
-                {growthInsights.trend === null ? <span className="trend-wait"><Activity /> 6件以上で直近5件と前5件を比較</span> : growthInsights.trend <= 0 ? <span className="trend-good"><TrendingDown /> 課題負荷が {Math.abs(growthInsights.trend).toFixed(1)} 改善</span> : <span className="trend-alert"><TrendingUp /> 課題負荷が {growthInsights.trend.toFixed(1)} 上昇</span>}
+                {growthInsights.trend === null ? <span className="trend-wait"><Activity /> 実解析8件以上で直近5件と前3〜5件を比較</span> : growthInsights.trend <= 0 ? <span className="trend-good"><TrendingDown /> AI評価の指摘の強さが {Math.abs(growthInsights.trend).toFixed(1)} 改善</span> : <span className="trend-alert"><TrendingUp /> AI評価の指摘の強さが {growthInsights.trend.toFixed(1)} 上昇</span>}
               </div>
               {growthInsights.latest ? (
                 <div className="report-compare">
@@ -1327,9 +1400,10 @@ export default function Home() {
         </section>
 
         <footer><span><ShieldCheck /> 試合後レビュー専用</span><p>ゲームへの接続・操作・リアルタイム情報の取得は行いません。AIの提案はVOD確認と組み合わせて判断してください。</p></footer>
+        <nav className="footer-links" aria-label="運営情報"><a href="/legal">販売条件・運営情報</a><a href="/privacy">データの取り扱い</a></nav>
       </main>
 
-      <Dialog open={pricingOpen} onOpenChange={setPricingOpen}>
+      <Dialog open={pricingOpen} onOpenChange={(open) => { setPricingOpen(open); if (!open) setPendingPlan(null); }}>
         <DialogContent className="pricing-dialog">
           <DialogHeader>
             <p className="eyebrow">REVIEW / CLIMB</p>
@@ -1345,17 +1419,19 @@ export default function Home() {
             <span><QrCode /><strong>PayPay QR</strong> 30日パス・自動更新なし</span>
             <span><CreditCard /><strong>カード（Stripe）</strong> 毎月自動更新</span>
           </div>
+          <div className="plan-definition"><strong>1試合分 = 同じ録画から選んだ最大3場面</strong><p>各場面の前20秒〜後5秒から最大6枚を解析します。試合全体・すべてのデスを自動で評価するプランではありません。最初の解析成功で1試合分を使い、残り2場面は同じ契約期間内に追加できます。同じ場面は保存済み結果を再表示します。</p><p>通常プランはAI費用込み・APIキー不要。無料体験は1アカウントにつき1試合・最大3場面で、自動的に有料へ切り替わりません。</p></div>
+          {pendingPlan ? <section className="purchase-confirmation" aria-label="お申し込み内容の確認"><h3>お申し込み内容</h3><p><strong>{pendingPlan.startsWith("climb_") ? "Climb" : "Review"} · ¥{pendingPrice.toLocaleString()}（税込）</strong></p><p>{pendingMatches}試合 × 最大3場面 · AI費用込み · 未使用枠の繰越なし</p><p>{pendingPlan.includes("paypay") ? "PayPayで1回払い。30日間、自動更新なし。" : `カードで毎月¥${pendingPrice.toLocaleString()}（税込）。解約まで自動更新し、12か月継続時の合計は¥${(pendingPrice * 12).toLocaleString()}（税込）です。`}</p><p>支払い確認後に利用できます。お客様都合の購入後返金は原則ありません。未提供・重複請求等の対応は<a href="/legal" target="_blank" rel="noreferrer">販売条件</a>をご確認ください。</p><div><Button variant="outline" onClick={() => setPendingPlan(null)} disabled={checkoutPlan !== null}>戻る</Button><Button onClick={() => void startCheckout(pendingPlan)} disabled={checkoutPlan !== null}>{checkoutPlan ? "決済画面を準備中…" : "内容を確認して決済画面へ"}</Button></div></section> : null}
 
-          <div className="payment-grid">
+          <div className="payment-grid" hidden={pendingPlan !== null}>
             <article className="payment-option review-tier">
               <div className="payment-option-head"><span className="payment-icon"><Target /></span><div><small>STANDARD</small><h3>Review</h3></div></div>
-              <div className="payment-price"><strong>¥900</strong><span>税込 / 30日・月</span></div>
-              <ul><li><CheckCircle2 />AI解析5試合分</li><li><CheckCircle2 />1試合あたり180円相当</li><li><CheckCircle2 />まず少ない試合数で試したい人向け</li></ul>
+              <div className="payment-price"><strong>¥900</strong><span>税込 · PayPayは30日 / カードは月額</span></div>
+              <ul><li><CheckCircle2 />5試合 × 最大3場面（計15場面）</li><li><CheckCircle2 />AI費用込み・追加請求なし</li><li><CheckCircle2 />まず少ない試合数で試したい人向け</li></ul>
               <div className="payment-actions">
-                <Button type="button" size="lg" variant="outline" disabled={!billingLoaded || !billingConfigured || checkoutPlan !== null} onClick={() => void startCheckout("paypay_30day")}>
+                <Button type="button" size="lg" variant="outline" disabled={!billingLoaded || !billingConfigured || !paypayEnabled || entitlement?.status === "active" || checkoutPlan !== null} onClick={() => setPendingPlan("paypay_30day")}>
                   {checkoutPlan === "paypay_30day" ? <LoaderCircle className="spin" /> : <QrCode />}{checkoutPlan === "paypay_30day" ? "準備中…" : "PayPay・30日"}
                 </Button>
-                <Button type="button" size="lg" variant="outline" disabled={!billingLoaded || !billingConfigured || checkoutPlan !== null} onClick={() => void startCheckout("card_monthly")}>
+                <Button type="button" size="lg" variant="outline" disabled={!billingLoaded || !billingConfigured || entitlement?.status === "active" || checkoutPlan !== null} onClick={() => setPendingPlan("card_monthly")}>
                   {checkoutPlan === "card_monthly" ? <LoaderCircle className="spin" /> : <CreditCard />}{checkoutPlan === "card_monthly" ? "準備中…" : "カード・月額"}
                 </Button>
               </div>
@@ -1363,37 +1439,42 @@ export default function Home() {
 
             <article className="payment-option recommended climb-tier">
               <div className="payment-option-head"><span className="payment-icon paypay"><TrendingUp /></span><div><Badge>上位プラン</Badge><h3>Climb</h3></div></div>
-              <div className="payment-price"><strong>¥1,800</strong><span>税込 / 30日・月</span></div>
-              <ul><li><CheckCircle2 />AI解析10試合分</li><li><CheckCircle2 />Reviewの2倍の解析枠</li><li><CheckCircle2 />継続して試合を見返す人向け</li></ul>
+              <div className="payment-price"><strong>¥1,800</strong><span>税込 · PayPayは30日 / カードは月額</span></div>
+              <ul><li><CheckCircle2 />10試合 × 最大3場面（計30場面）</li><li><CheckCircle2 />週2〜3試合の振り返りに</li><li><CheckCircle2 />AI費用込み・追加請求なし</li></ul>
               <div className="payment-actions">
-                <Button type="button" size="lg" disabled={!billingLoaded || !billingConfigured || checkoutPlan !== null} onClick={() => void startCheckout("climb_paypay_30day")}>
+                <Button type="button" size="lg" disabled={!billingLoaded || !billingConfigured || !paypayEnabled || entitlement?.status === "active" || checkoutPlan !== null} onClick={() => setPendingPlan("climb_paypay_30day")}>
                   {checkoutPlan === "climb_paypay_30day" ? <LoaderCircle className="spin" /> : <QrCode />}{checkoutPlan === "climb_paypay_30day" ? "準備中…" : "PayPay・30日"}
                 </Button>
-                <Button type="button" size="lg" variant="outline" disabled={!billingLoaded || !billingConfigured || checkoutPlan !== null} onClick={() => void startCheckout("climb_card_monthly")}>
+                <Button type="button" size="lg" variant="outline" disabled={!billingLoaded || !billingConfigured || entitlement?.status === "active" || checkoutPlan !== null} onClick={() => setPendingPlan("climb_card_monthly")}>
                   {checkoutPlan === "climb_card_monthly" ? <LoaderCircle className="spin" /> : <CreditCard />}{checkoutPlan === "climb_card_monthly" ? "準備中…" : "カード・月額"}
                 </Button>
               </div>
             </article>
           </div>
 
-          <div className="renewal-terms"><p><CalendarDays /><span><strong>PayPay QR</strong> 購入日から30日間利用でき、30日後に自動終了します。継続する場合だけ再購入してください。</span></p><p><RotateCcw /><span><strong>カード月額</strong> 毎月自動更新されます。いつでも解約でき、解約後も契約期間末まで利用できます。</span></p></div>
-          {!billingConfigured && billingLoaded ? <div className="billing-setup-note"><AlertTriangle /><div><strong>決済接続は準備中です</strong><p>料金表示と購入導線は完成済みです。Stripeの秘密鍵とPayPay利用申請を設定すると、ボタンが有効になります。</p></div></div> : null}
+          <div className="renewal-terms"><p><CalendarDays /><span><strong>PayPay QR</strong> 購入日から30日間利用でき、30日後に自動終了します。継続する場合だけ再購入してください。</span></p><p><RotateCcw /><span><strong>カード月額</strong> 毎月自動更新されます。この画面からいつでも次回更新を停止でき、契約期間末まで残り枠を使えます。</span></p></div>
+          {!billingConfigured && billingLoaded ? <div className="billing-setup-note"><AlertTriangle /><div><strong>有料プランは準備中です</strong><p>有料プランは販売準備中です。現在は購入・請求できません。録画の切り出しとサンプルレビューをご利用ください。</p></div></div> : null}
+          {billingConfigured && !paypayEnabled ? <p className="billing-fineprint">PayPayは受付準備中です。カードをご利用ください。</p> : null}
+          {entitlement?.status === "active" && entitlement.plan.includes("card") ? <Button variant="outline" disabled={cancelBusy} onClick={() => void cancelRenewal()}>{cancelBusy ? "確認中…" : "次回の自動更新を停止する"}</Button> : null}
           {billingNotice ? <div className={`billing-notice ${billingNotice.tone}`} role="status" aria-live="polite">{billingNotice.tone === "error" ? <AlertTriangle /> : billingNotice.tone === "success" ? <CheckCircle2 /> : <Clock3 />}<span>{billingNotice.message}</span></div> : null}
-          <p className="billing-fineprint">PayPay QRとカード決済は、どちらもStripeの安全な決済画面で行います。年額Climbは返金条件の確定後に追加します。</p>
+          <p className="billing-fineprint">未使用枠は繰り越しません。失敗・判定保留は試合枠を消費しませんが、1日12回の受付上限に含みます。混雑・全体の上限到達時は翌日以降の受付となる場合があります。</p>
+          <a className="legal-link" href="/legal">特定商取引法に基づく表記・販売条件</a>
         </DialogContent>
       </Dialog>
 
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="settings-dialog">
-          <DialogHeader><p className="eyebrow">AI CONNECTION</p><DialogTitle>AI設定</DialogTitle><DialogDescription>APIキーはブラウザのメモリだけに保持し、保存しません。解析時はこのサイトの中継処理を通してOpenAIへ送られます。</DialogDescription></DialogHeader>
-          <div className="settings-fields">
+          <DialogHeader><p className="eyebrow">AI CONNECTION</p><DialogTitle>解析とデータの取り扱い</DialogTitle><DialogDescription>通常の無料体験・有料プランはAPIキー不要です。最大6枚の静止画から判断し、映像に写っていない動きや音声は推測で断定しません。</DialogDescription></DialogHeader>
+          <details className="personal-api"><summary>自分のAPIキーで試す（任意・別料金）</summary><p>無料体験・月額プランとは別の試用方法です。API料金はご自身のOpenAIアカウントに発生します。キーは保存せず、解析時だけこのサイトを経由してOpenAIへ送ります。</p><div className="settings-fields">
             <label htmlFor="apiKey"><span>OpenAI APIキー</span></label>
             <div className="key-field"><KeyRound /><Input id="apiKey" type={showKey ? "text" : "password"} value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk-..." autoComplete="off" spellCheck={false} /><Button type="button" variant="ghost" size="icon-sm" aria-label={showKey ? "APIキーを隠す" : "APIキーを表示"} onClick={() => setShowKey((current) => !current)}>{showKey ? <EyeOff /> : <Eye />}</Button></div>
             <label htmlFor="model"><span>解析モデル</span></label>
             <NativeSelect id="model" value={model} onChange={(event) => setModel(event.target.value)}><NativeSelectOption value="gpt-5.6-luna">GPT-5.6 Luna（推奨・低コスト）</NativeSelectOption><NativeSelectOption value="gpt-5.6-sol">GPT-5.6 Sol（高精度）</NativeSelectOption></NativeSelect>
           </div>
-          <div className="privacy-box"><ShieldCheck /><div><strong>送信するのは最大5枚</strong><p>動画ファイル全体は送らず、切り出した圧縮画像・試合情報・APIキーだけを解析時に送ります。</p></div></div>
-          <div className="dialog-actions"><Button type="button" variant="outline" onClick={() => { setApiKey(""); setShowKey(false); }}><RotateCcw /> キーを消去</Button><Button type="button" onClick={() => setSettingsOpen(false)}>設定を閉じる</Button></div>
+          </details>
+          <div className="privacy-box"><ShieldCheck /><div><strong>送信するのは最大6枚</strong><p>切り出した画像・試合情報・課題を解析時に送信します。レビュー・解析回数・評価はアカウントに紐づけて保存します。動画・切り出し画像はサイトの保存領域に保存しません。</p></div></div>
+          <a href="/privacy">データの取り扱いを詳しく見る</a>
+          <div className="dialog-actions">{apiKey ? <Button type="button" variant="outline" onClick={() => { setApiKey(""); setShowKey(false); }}><RotateCcw /> キーを消去</Button> : null}<Button type="button" onClick={() => setSettingsOpen(false)}>閉じる</Button></div>
         </DialogContent>
       </Dialog>
     </div>

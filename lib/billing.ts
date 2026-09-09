@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import { billingEntitlements, billingPayments } from "@/db/schema";
+import { serviceConfig, merchantConfigured } from "@/lib/service-config";
 
 export const PAYPAY_ACCESS_DAYS = 30;
 
@@ -59,7 +60,7 @@ export const BILLING_PLAN_DETAILS: Record<BillingPlan, BillingPlanDetails> = {
 };
 
 export function getBillingPlanDetails(value: unknown) {
-  if (typeof value !== "string" || !(value in BILLING_PLAN_DETAILS)) return null;
+  if (typeof value !== "string" || !Object.hasOwn(BILLING_PLAN_DETAILS, value)) return null;
   return BILLING_PLAN_DETAILS[value as BillingPlan];
 }
 
@@ -86,6 +87,8 @@ export type StripeSubscription = {
   current_period_start?: number;
   metadata?: Record<string, string> | null;
   status?: string;
+  items?: { data?: { current_period_start?: number; current_period_end?: number }[] };
+  cancel_at_period_end?: boolean;
 };
 
 export type BillingEntitlement = {
@@ -102,6 +105,11 @@ function runtimeEnv() {
 
 export function stripeCheckoutConfigured() {
   return Boolean(runtimeEnv().STRIPE_SECRET_KEY?.trim());
+}
+
+export function salesConfigured() {
+  const config = serviceConfig();
+  return stripeCheckoutConfigured() && stripeWebhookConfigured() && Boolean(config.apiKey) && merchantConfigured() && config.riotApproved;
 }
 
 export function stripeWebhookConfigured() {
@@ -140,7 +148,7 @@ function remainingDays(endsAt: string) {
 
 export function publicEntitlement(row: typeof billingEntitlements.$inferSelect | undefined): BillingEntitlement | null {
   if (!row) return null;
-  const active = row.status === "active" && new Date(row.endsAt).getTime() > Date.now();
+  const active = row.status === "active" && Date.parse(row.startsAt) <= Date.now() && Date.parse(row.endsAt) > Date.now();
   return {
     plan: row.plan as BillingPlan,
     status: active ? "active" : "inactive",
@@ -173,6 +181,9 @@ function subscriptionFromSession(session: StripeCheckoutSession) {
 }
 
 export async function recordPaidCheckout(session: StripeCheckoutSession) {
+  if (typeof session.subscription === "string") {
+    session = { ...session, subscription: await stripeRequest<StripeSubscription>(`/subscriptions/${encodeURIComponent(session.subscription)}`) };
+  }
   const userId = session.client_reference_id || session.metadata?.user_id || "";
   const plan = sessionPlan(session);
   if (!userId || !plan) throw new Error("INVALID_CHECKOUT_SESSION");
@@ -199,12 +210,13 @@ export async function recordPaidCheckout(session: StripeCheckoutSession) {
     .where(eq(billingEntitlements.userId, userId))
     .limit(1);
   const subscription = subscriptionFromSession(session);
-  const startsAt = payPay
-    ? new Date(Math.max(now.getTime(), current?.status === "active" ? new Date(current.endsAt).getTime() : 0))
-    : new Date((subscription?.current_period_start || session.created || Math.floor(now.getTime() / 1000)) * 1000);
+  const periodStart = subscription?.current_period_start || subscription?.items?.data?.[0]?.current_period_start;
+  const periodEnd = subscription?.current_period_end || subscription?.items?.data?.[0]?.current_period_end;
+  if (!payPay && (!periodStart || !periodEnd)) throw new Error("SUBSCRIPTION_PERIOD_UNAVAILABLE");
+  const startsAt = new Date((payPay ? session.created || Math.floor(now.getTime() / 1000) : periodStart!) * 1000);
   const endsAt = payPay
     ? new Date(startsAt.getTime() + PAYPAY_ACCESS_DAYS * 86_400_000)
-    : new Date((subscription?.current_period_end || Math.floor(now.getTime() / 1000) + 31 * 86_400) * 1000);
+    : new Date(periodEnd! * 1000);
   const email = session.customer_details?.email || current?.email || "";
   const paidAt = new Date((session.created || Math.floor(now.getTime() / 1000)) * 1000).toISOString();
   const subscriptionId = typeof session.subscription === "string"
@@ -260,15 +272,19 @@ export async function updateSubscription(subscription: StripeSubscription) {
     .limit(1);
   if (!current) return;
 
-  const activeStatuses = new Set(["active", "trialing", "past_due"]);
+  if (current.subscriptionId !== subscription.id) return;
+  const activeStatuses = new Set(["active", "trialing"]);
   const status = activeStatuses.has(subscription.status || "") ? "active" : "inactive";
-  const endsAt = subscription.current_period_end
-    ? new Date(subscription.current_period_end * 1000).toISOString()
+  const periodEnd = subscription.current_period_end || subscription.items?.data?.[0]?.current_period_end;
+  const periodStart = subscription.current_period_start || subscription.items?.data?.[0]?.current_period_start;
+  const endsAt = periodEnd
+    ? new Date(periodEnd * 1000).toISOString()
     : current.endsAt;
   await db.update(billingEntitlements).set({
     status,
     subscriptionId: subscription.id,
     endsAt,
+    startsAt: periodStart ? new Date(periodStart * 1000).toISOString() : current.startsAt,
     updatedAt: new Date().toISOString(),
   }).where(eq(billingEntitlements.userId, userId));
 }

@@ -65,6 +65,16 @@ test("renders development preview metadata", async () => {
   assert.match(html, /自動更新なし/);
   assert.match(html, /1試合あたり180円相当/);
   assert.match(html, /<kbd>D<\/kbd>/);
+  assert.match(html, /録画なしでサンプルを見る/);
+  assert.match(html, /最大6枚の画像/);
+  assert.match(html, /AIレビューは準備中/);
+  assert.ok(html.indexOf('class="workspace-grid"') < html.indexOf('class="growth-level-strip"'));
+  for (const [path, expected] of [["/legal", /特定商取引法に基づく表記/], ["/privacy", /動画全体・音声は送信せず/]]) {
+    const page = await worker.fetch(new Request(`http://localhost${path}`, { headers: { accept: "text/html" } }),
+      { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+      { waitUntil() {}, passThroughOnException() {} });
+    assert.equal(page.status, 200); assert.match(await page.text(), expected);
+  }
 
   const invalidAnalyzeResponse = await worker.fetch(
     new Request("http://localhost/api/analyze", {
@@ -83,10 +93,10 @@ test("renders development preview metadata", async () => {
     },
   );
 
-  assert.equal(invalidAnalyzeResponse.status, 400);
+  assert.equal(invalidAnalyzeResponse.status, 503);
   assert.match(
     (await invalidAnalyzeResponse.json()).error,
-    /APIキー/,
+    /準備中/,
   );
 
   const unconfiguredCheckoutResponse = await worker.fetch(
@@ -113,6 +123,6 @@ test("renders development preview metadata", async () => {
   assert.equal(unconfiguredCheckoutResponse.status, 503);
   assert.match(
     (await unconfiguredCheckoutResponse.json()).error,
-    /決済は現在準備中/,
+    /有料プランは販売準備中/,
   );
 });

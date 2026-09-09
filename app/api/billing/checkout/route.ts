@@ -2,32 +2,37 @@ import {
   type BillingPlan,
   getBillingPlanDetails,
   PAYPAY_ACCESS_DAYS,
-  stripeCheckoutConfigured,
+  salesConfigured, getEntitlement,
   stripeRequest,
 } from "@/lib/billing";
 import { getSiteUser } from "@/lib/site-user";
+import { serviceConfig, sameOriginRequest } from "@/lib/service-config";
 
 type CheckoutResponse = { id: string; url: string | null };
 
 export async function POST(request: Request) {
+  if (!sameOriginRequest(request)) return Response.json({ error: "このサイトから購入を開始してください。" }, { status: 403 });
   const user = getSiteUser(request);
   if (!user) {
     return Response.json({ error: "購入にはChatGPTへのサインインが必要です。" }, { status: 401 });
   }
 
-  const body = await request.json().catch(() => ({})) as { plan?: unknown };
-  const planDetails = getBillingPlanDetails(body.plan);
+  const body = await request.json().catch(() => null) as { plan?: unknown } | null;
+  const planDetails = getBillingPlanDetails(body?.plan);
   if (!planDetails) {
     return Response.json({ error: "料金プランを選び直してください。" }, { status: 400 });
   }
-  if (!stripeCheckoutConfigured()) {
+  if (!salesConfigured() || (planDetails.paymentMethod === "paypay" && !serviceConfig().paypayEnabled)) {
     return Response.json({
       code: "billing_not_configured",
-      error: "決済は現在準備中です。Stripeの本番設定後に購入できるようになります。",
+      error: "有料プランは販売準備中です。現在は購入・請求できません。",
     }, { status: 503 });
   }
 
-  const plan = body.plan as BillingPlan;
+  const current = await getEntitlement(user.id);
+  if (current?.status === "active") return Response.json({ error: "有効なプランがあります。重複購入はできません。" }, { status: 409 });
+
+  const plan = body!.plan as BillingPlan;
   const payPay = planDetails.paymentMethod === "paypay";
   const origin = new URL(request.url).origin;
   const params = new URLSearchParams();
@@ -42,8 +47,9 @@ export async function POST(request: Request) {
   params.set("line_items[0][price_data][tax_behavior]", "inclusive");
   params.set("line_items[0][price_data][product_data][name]", planDetails.productName);
   params.set("line_items[0][price_data][product_data][description]", payPay
-    ? `AI解析${planDetails.analysisCredits}試合分・購入日から${PAYPAY_ACCESS_DAYS}日・自動更新なし`
-    : `AI解析${planDetails.analysisCredits}試合分・毎月自動更新・いつでも解約可能`);
+    ? `AI費用込み・${planDetails.analysisCredits}試合×最大3場面・${PAYPAY_ACCESS_DAYS}日・自動更新なし・未使用枠繰越なし`
+    : `AI費用込み・毎月${planDetails.analysisCredits}試合×最大3場面・自動更新・いつでも更新停止・未使用枠繰越なし`);
+  params.set("custom_text[submit][message]", "1日12回まで。失敗・判定保留は試合枠を消費しません。購入後のお客様都合の返金はありません。サービス未提供等は販売条件に従います。");
   if (!payPay) params.set("line_items[0][price_data][recurring][interval]", "month");
   params.set("metadata[user_id]", user.id);
   params.set("metadata[plan]", plan);
