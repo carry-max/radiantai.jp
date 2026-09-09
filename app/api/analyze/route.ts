@@ -5,6 +5,8 @@ import { serviceConfig, sameOriginRequest } from "@/lib/service-config";
 import { getEntitlement } from "@/lib/billing";
 import { AccessError, reserveAnalysis, completeAnalysis, failAnalysis, getAnalysisAllowance, type Reservation } from "@/lib/analysis-access";
 import { z } from "zod";
+import { SKILL_ASSESSMENT_SCHEMA, SKILL_ASSESSMENT_INSTRUCTIONS, verifiedSkillRatings } from "@/lib/player-growth";
+import { saveAiGrowth } from "@/lib/player-growth-store";
 
 const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
 const ALLOWED_MODELS = new Set(["gpt-5.6-luna", "gpt-5.6-sol"]);
@@ -16,6 +18,7 @@ const REVIEW_SCHEMA = {
     headline: { type: "string" },
     observed: { type: "array", items: { type: "string" } },
     evidence_frames: { type: "array", items: { type: "object", properties: { time: { type: "number" }, observation: { type: "string" } }, required: ["time", "observation"], additionalProperties: false } },
+    skill_assessments: SKILL_ASSESSMENT_SCHEMA,
     main_issue: {
       type: "object",
       properties: {
@@ -64,6 +67,7 @@ const REVIEW_SCHEMA = {
     "headline",
     "observed",
     "evidence_frames",
+    "skill_assessments",
     "main_issue",
     "improvements",
     "next_focus",
@@ -91,7 +95,7 @@ K/Dではなく、再現性のある判断改善を重視してください。
 前回ミッションが入力されていない場合はmission_check.statusをnot_applicableにしてください。
 イニシエーターなら、索敵、味方との同期、スキルを持ったままの死亡を特に確認してください。
 材料不足ならstatusをinsufficient、categoryを判定困難にしてください。
-evidence_framesには結論の根拠となる入力画像の時刻timeと、そこに見える事実observationを入れてください。入力にない時刻や観測事実を作らないでください。根拠がない場合は空配列とし、判定を保留してください。`;
+evidence_framesには結論の根拠となる入力画像の時刻timeと、そこに見える事実observationを入れてください。入力にない時刻や観測事実を作らないでください。根拠がない場合は空配列とし、判定を保留してください。` + SKILL_ASSESSMENT_INSTRUCTIONS;
 
 const confidenceSchema = z.enum(["low", "medium", "high"]);
 const validatedReviewSchema = z.object({
@@ -256,7 +260,13 @@ export async function POST(request: Request) {
       if (frames.some(frame => frame.time === null)) throw new RequestError("フレームの時刻を確認できませんでした。もう一度切り出してください。");
       const result = await reserveAnalysis(getMissionDb(), user.id, await getEntitlement(user.id), recordingId, String(Math.round(deathTime)));
       reservation = result.reservation;
-      if (result.cached) return json(result.cached);
+      if (result.cached) {
+        const cachedRatings = verifiedSkillRatings(result.cached.review?.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), result.cached.review?.status === "ok");
+        let growthNotice = "";
+        try { await saveAiGrowth(getMissionDb(), user.id, result.cached.analysisId, cachedRatings, `${metadata.map || "マップ未設定"} / ${metadata.timestamp || "レビュー"}`); }
+        catch { growthNotice = "成長グラフへの反映を確認できませんでした。同じ場面を再表示してお試しください。"; }
+        return json({ ...result.cached, growthNotice });
+      }
     }
     let monthlyContext: MonthlyContext | null = null;
     let missionDb: MissionDatabase | null = null;
@@ -310,7 +320,7 @@ export async function POST(request: Request) {
 4課題すべて同じ文章にせず、今回の根拠に沿った段階的な内容にしてください。判定材料が足りない場合statusをinsufficientとしてください。` : ""),
         input: [{ role: "user", content }],
         reasoning: { effort: "low" },
-        max_output_tokens: createMonthlyPlan ? 2600 : monthlyTask ? 2000 : 1600,
+        max_output_tokens: createMonthlyPlan ? 3600 : monthlyTask ? 3000 : 2600,
         store: false,
         text: {
           format: {
@@ -343,6 +353,7 @@ export async function POST(request: Request) {
       review.mission_check = previousMission ? verifiedMonthlyCheck(review.mission_check, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), review.status === "ok")
         : { status: "not_applicable", confidence: "low", evidence: "今回は前回ミッションの判定対象ではありません。", evidence_times: [] };
     }
+    review.skill_assessments = verifiedSkillRatings(review.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), review.status === "ok");
     let monthlyResult: Record<string, unknown> = {};
     if (monthlyContext && missionDb) {
       try {
@@ -356,10 +367,15 @@ export async function POST(request: Request) {
         monthlyResult = { monthlySaved: false, xpAwarded: 0, monthlyNotice: "レビューは完了しましたが、月間ミッションを保存できませんでした。進捗を再読み込みして確認してください。" };
       }
     }
-    const payload = { ok: true, review, model: cleanText(upstreamBody.model, 80) || model, usage: upstreamBody.usage ?? {}, analysisId: reservation?.id || null, ...monthlyResult };
+    const growthAnalysisId = reservation?.id || (user && /^[a-f0-9]{64}$/.test(recordingId) ? `personal:${recordingId}:${Math.round(Number(body.deathTimestamp) || 0)}` : null);
+    const payload = { ok: true, review, model: cleanText(upstreamBody.model, 80) || model, usage: upstreamBody.usage ?? {}, analysisId: reservation?.id || null, growthNotice: "", ...monthlyResult };
     if (reservation) {
       await completeAnalysis(reservation, { ok: true, review, model: payload.model }, review.status === "ok", payload.usage);
       reservation = null;
+    }
+    if (user && growthAnalysisId) {
+      try { await saveAiGrowth(getMissionDb(), user.id, growthAnalysisId, verifiedSkillRatings(review.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), review.status === "ok"), `${metadata.map || "マップ未設定"} / ${metadata.agent || metadata.role || "エージェント未設定"} / ${metadata.timestamp || "レビュー"}`); }
+      catch { payload.growthNotice = "成長グラフに保存できませんでした。同じ場面の再表示で再度反映を試せます。"; }
     }
     return json(payload);
   } catch (error) {

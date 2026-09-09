@@ -63,6 +63,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { MonthlyMissions } from "@/components/monthly-missions";
+import { PlayerGrowth } from "@/components/player-growth";
 import type { AnalysisAllowance } from "@/lib/analysis-access";
 import { fingerprintRecording, monthlyPhase, type MonthlySummary } from "@/lib/monthly-missions";
 import {
@@ -309,6 +310,7 @@ export default function Home() {
   const [billingLoaded, setBillingLoaded] = useState(false);
   const [paypayEnabled, setPaypayEnabled] = useState(false);
   const [serviceReady, setServiceReady] = useState(false);
+  const [growthRefreshKey, setGrowthRefreshKey] = useState(0);
   const [signedIn, setSignedIn] = useState(false);
   const [allowance, setAllowance] = useState<AnalysisAllowance | null>(null);
   const [allowanceError, setAllowanceError] = useState("");
@@ -860,7 +862,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...(apiKey.trim() ? { apiKey: apiKey.trim(), model } : {}), deathTimestamp, metadata: matchContext, previousMission, monthlyTracking: true, recordingId: nextRecordingId, renewMonthly, frames: frames.map(({ label, dataUrl, time }) => ({ label, dataUrl, time })) }),
       });
-      const data = (await response.json()) as { ok?: boolean; error?: string; review?: Review; model?: string; monthly?: MonthlySummary; monthlyNotice?: string; xpAwarded?: number; monthlySaved?: boolean; analysisId?: string; cached?: boolean };
+      const data = (await response.json()) as { ok?: boolean; error?: string; review?: Review; model?: string; monthly?: MonthlySummary; monthlyNotice?: string; xpAwarded?: number; monthlySaved?: boolean; analysisId?: string; cached?: boolean; growthNotice?: string };
       if (!response.ok || !data.ok || !data.review) throw new Error(data.error || "AI解析に失敗しました。");
       if (runId !== analysisRunRef.current) { void reloadMonthly(); return; }
       setMonthlyNotice(data.monthlyNotice || "");
@@ -868,8 +870,10 @@ export default function Home() {
       if (data.monthlySaved === false) setMonthlyError(data.monthlyNotice || "進捗を保存できませんでした。");
       if (data.monthlySaved && data.monthly?.cycle && monthlyPhase(data.monthly.cycle, Date.parse(data.monthly.serverNow)) === "active") setRenewMonthly(false);
       setAnalysisId(data.analysisId || ""); setFeedbackNotice("");
+      setGrowthRefreshKey(current => current + 1);
       if (data.cached) void reloadMonthly();
       finishReview(data.review, data.model || model, data.cached ? "保存済みのレビューを表示しました。解析枠は消費しません。" : data.review.status === "insufficient" ? "根拠が不足しているため判定保留です。試合枠は消費していません。" : "AIレビューが完了しました。次の試合で直すことを1つ確認しましょう。");
+      if (data.growthNotice) setStatus({ message: `レビューは完了しました。${data.growthNotice}`, tone: "neutral" });
     } catch (error) {
       if (runId === analysisRunRef.current) setStatus({ message: error instanceof Error ? error.message : "AI解析に失敗しました。", tone: "error" });
     } finally {
@@ -1076,6 +1080,7 @@ export default function Home() {
         </a>
         <div className="top-actions">
           <span className="local-state"><ShieldCheck aria-hidden="true" /> 動画は端末内で処理</span>
+          <Button asChild variant="outline" className="top-growth"><a href="#player-growth"><Activity /> 成長グラフ</a></Button>
           <Button type="button" variant="outline" onClick={() => setPricingOpen(true)} className="top-pricing"><Wallet /> {entitlement?.status === "active" ? `残り${entitlement.remainingDays}日` : "料金・利用状況"}</Button>
           <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)} className="top-settings"><Settings2 /> 解析について</Button>
         </div>
@@ -1296,6 +1301,8 @@ export default function Home() {
             ))}</div>
           ) : <div className="empty-history"><History /><span>解析結果はこのブラウザに最大50件保存されます。</span></div>}
         </section>
+
+        <PlayerGrowth refreshKey={growthRefreshKey} />
 
         <section className="growth-level-strip" aria-labelledby="growth-level-title">
           <div className="level-emblem" aria-label={`成長レベル ${growthLevel}`}><small>GROWTH</small><strong>LV {growthLevel}</strong></div>

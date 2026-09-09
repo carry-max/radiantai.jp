@@ -68,6 +68,11 @@ test("renders development preview metadata", async () => {
   assert.match(html, /録画なしでサンプルを見る/);
   assert.match(html, /最大6枚の画像/);
   assert.match(html, /AIレビューは準備中/);
+  assert.match(html, /あなたの成長マップ/);
+  assert.match(html, /ピークアドバンテージ/);
+  assert.match(html, /クロスヘア配置/);
+  assert.match(html, /今日の評価を記録/);
+  assert.match(html, /未評価は0点にせず欠測/);
   assert.ok(html.indexOf('class="workspace-grid"') < html.indexOf('class="growth-level-strip"'));
   for (const [path, expected] of [["/legal", /特定商取引法に基づく表記/], ["/privacy", /動画全体・音声は送信せず/]]) {
     const page = await worker.fetch(new Request(`http://localhost${path}`, { headers: { accept: "text/html" } }),

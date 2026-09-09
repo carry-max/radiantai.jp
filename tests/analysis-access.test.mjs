@@ -17,7 +17,7 @@ const access = await vite.ssrLoadModule("/lib/analysis-access.ts");
 const billing = await vite.ssrLoadModule("/lib/billing.ts");
 const api = await vite.ssrLoadModule("/app/api/analyze/route.ts");
 const feedback = await vite.ssrLoadModule("/app/api/review-feedback/route.ts");
-const migrations = await Promise.all(["0000_steep_scarlet_spider.sql", "0002_goofy_rawhide_kid.sql"].map(name => readFile(new URL(`../drizzle/${name}`, import.meta.url), "utf8")));
+const migrations = await Promise.all(["0000_steep_scarlet_spider.sql", "0002_goofy_rawhide_kid.sql", "0003_demonic_avengers.sql"].map(name => readFile(new URL(`../drizzle/${name}`, import.meta.url), "utf8")));
 function database() {
   const sqlite = new DatabaseSync(":memory:");
   migrations.forEach(sql => sqlite.exec(sql));
@@ -133,6 +133,7 @@ test("hosted analysis uses the service key, caches success, and rejects unsuppor
     return Response.json({ usage: { input_tokens: 123 }, output_text: JSON.stringify({
       status: "ok", headline: "遮蔽を使う", observed: ["射線に出ている"],
       evidence_frames: [{ time: evidenceTime, observation: "射線に出ている" }],
+      skill_assessments: [{ skill: "positioning", level: 2, evidence: "遮蔽から離れている", times: [evidenceTime] }],
       main_issue: { category: "ポジショニング", severity: "medium", evidence: "遮蔽から離れている" },
       improvements: ["遮蔽の近くで接敵する"], next_focus: "遮蔽を使う",
       mission_check: { status: "not_applicable", evidence: "なし", confidence: "low", evidence_times: [] },
@@ -144,9 +145,12 @@ test("hosted analysis uses the service key, caches success, and rejects unsuppor
     assert.equal(first.status, 200, JSON.stringify(result)); assert.ok(result.analysisId);
     assert.equal((await access.readAllowance(db, "owner", null)).recordings[0].scenesUsed, 1);
     const replay = await send(20); assert.equal((await replay.json()).cached, true); assert.equal(upstreamCalls, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) n FROM player_growth_records WHERE source = 'ai'").get().n, 1);
     evidenceTime = 999;
     const unsupported = await send(30); assert.equal(unsupported.status, 200);
     const held = await unsupported.json(); assert.equal(held.review.status, "insufficient"); assert.deepEqual(held.review.observed, []);
+    assert.deepEqual(held.review.skill_assessments, []);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) n FROM player_growth_records").get().n, 1);
     assert.equal((await access.readAllowance(db, "owner", null)).recordings[0].scenesUsed, 1);
     failUpstream = true;
     const failed = await send(40); assert.equal(failed.status, 502); assert.doesNotMatch(JSON.stringify(await failed.json()), /private provider error|test-server-key/);

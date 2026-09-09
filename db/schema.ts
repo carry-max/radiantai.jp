@@ -62,3 +62,12 @@ export const analysisRecords = sqliteTable("analysis_records", {
   resultJson: text("result_json").notNull().default("{}"), usageJson: text("usage_json").notNull().default("{}"),
   feedback: text("feedback"), createdAt: text("created_at").notNull(),
 }, (table) => [index("idx_analysis_user_period_recording").on(table.userId, table.periodKey, table.recordingId)]);
+
+export const playerGrowthRecords = sqliteTable("player_growth_records", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), source: text("source").notNull(),
+  analysisId: text("analysis_id"), recordedAt: text("recorded_at").notNull(),
+  label: text("label").notNull().default(""), note: text("note").notNull().default(""), ratingsJson: text("ratings_json").notNull(),
+}, (table) => [
+  uniqueIndex("idx_growth_user_analysis").on(table.userId, table.analysisId),
+  index("idx_growth_user_source_date").on(table.userId, table.source, table.recordedAt),
+]);
