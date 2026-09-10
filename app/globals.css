@@ -3,6 +3,7 @@
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 @import "./monthly-missions.css";
 @import "./player-growth.css";
+@import "./aim-review.css";
 
 @utility scrollbar-thin {
   scrollbar-width: thin;

@@ -7,6 +7,7 @@ import { AccessError, reserveAnalysis, completeAnalysis, failAnalysis, getAnalys
 import { z } from "zod";
 import { SKILL_ASSESSMENT_SCHEMA, SKILL_ASSESSMENT_INSTRUCTIONS, verifiedSkillRatings } from "@/lib/player-growth";
 import { saveAiGrowth } from "@/lib/player-growth-store";
+import { AIM_COACH_INSTRUCTIONS, AIM_OUTPUT_LIMIT, analysisSceneKey, validAimSequence, type ReviewMode, type AimCrop } from "@/lib/review-modes";
 
 const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
 const ALLOWED_MODELS = new Set(["gpt-5.6-luna", "gpt-5.6-sol"]);
@@ -33,6 +34,9 @@ const REVIEW_SCHEMA = {
             "人数管理",
             "味方とのタイミング",
             "クロスヘア",
+            "照準の初期位置",
+            "照準の修正",
+            "追いAIM",
             "情報不足",
             "判定困難",
           ],
@@ -109,6 +113,8 @@ const validatedReviewSchema = z.object({
 }).passthrough();
 
 type AnalyzeBody = {
+  mode?: unknown;
+  aimCrop?: unknown;
   apiKey?: unknown;
   model?: unknown;
   metadata?: unknown;
@@ -241,6 +247,10 @@ export async function POST(request: Request) {
     }
 
     const body = await readAnalyzeBody(request);
+    if (body.mode !== undefined && body.mode !== "tactics" && body.mode !== "aim") throw new RequestError("解析モードを選び直してください。");
+    const mode: ReviewMode = body.mode === "aim" ? "aim" : "tactics";
+    if (mode === "aim" && body.aimCrop !== undefined && body.aimCrop !== "center" && body.aimCrop !== "full") throw new RequestError("AIMの切り出し範囲を選び直してください。");
+    const aimCrop: AimCrop = body.aimCrop === "full" ? "full" : "center";
     const config = serviceConfig();
     const personalKey = cleanText(body.apiKey, 300);
     const apiKey = personalKey || config.apiKey;
@@ -248,8 +258,9 @@ export async function POST(request: Request) {
     if (!apiKey) return json({ ok: false, error: "AIレビューは現在準備中です。録画の切り出しとサンプルレビューをご利用いただけます。" }, 503);
     if (!ALLOWED_MODELS.has(model)) throw new RequestError("選択されたモデルは利用できません。");
     const frames = cleanFrames(body.frames);
+    if (mode === "aim" && !validAimSequence(frames.map(frame => frame.time), body.deathTimestamp)) throw new RequestError("AIMは基準時刻の前後0.4秒・6枚で解析します。AIMモードで切り出し直してください。");
     const metadata = cleanMetadata(body.metadata);
-    const previousMission = cleanText(body.previousMission, 320);
+    const previousMission = mode === "tactics" ? cleanText(body.previousMission, 320) : "";
     const user = getSiteUser(request);
     const recordingId = cleanText(body.recordingId, 64);
     if (!personalKey) {
@@ -258,10 +269,10 @@ export async function POST(request: Request) {
       const deathTime = body.deathTimestamp;
       if (typeof deathTime !== "number" || !Number.isFinite(deathTime) || deathTime < 0 || deathTime > 3600) throw new RequestError("場面の時刻を確認してください。");
       if (frames.some(frame => frame.time === null)) throw new RequestError("フレームの時刻を確認できませんでした。もう一度切り出してください。");
-      const result = await reserveAnalysis(getMissionDb(), user.id, await getEntitlement(user.id), recordingId, String(Math.round(deathTime)));
+      const result = await reserveAnalysis(getMissionDb(), user.id, await getEntitlement(user.id), recordingId, analysisSceneKey(mode, deathTime, aimCrop));
       reservation = result.reservation;
       if (result.cached) {
-        const cachedRatings = verifiedSkillRatings(result.cached.review?.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), result.cached.review?.status === "ok");
+        const cachedRatings = verifiedSkillRatings(result.cached.review?.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), result.cached.review?.status === "ok", mode);
         let growthNotice = "";
         try { await saveAiGrowth(getMissionDb(), user.id, result.cached.analysisId, cachedRatings, `${metadata.map || "マップ未設定"} / ${metadata.timestamp || "レビュー"}`); }
         catch { growthNotice = "成長グラフへの反映を確認できませんでした。同じ場面を再表示してお試しください。"; }
@@ -270,7 +281,7 @@ export async function POST(request: Request) {
     }
     let monthlyContext: MonthlyContext | null = null;
     let missionDb: MissionDatabase | null = null;
-    if (body.monthlyTracking === true) {
+    if (mode === "tactics" && body.monthlyTracking === true) {
       const user = getSiteUser(request);
       if (!user) return json({ ok: false, error: "ミッションを保存するにはログインしてください。" }, 401);
       const recordingId = cleanText(body.recordingId, 64);
@@ -290,6 +301,7 @@ export async function POST(request: Request) {
       ...REVIEW_SCHEMA,
       properties: {
         ...REVIEW_SCHEMA.properties,
+        ...(mode === "aim" ? { skill_assessments: { ...SKILL_ASSESSMENT_SCHEMA, items: { ...SKILL_ASSESSMENT_SCHEMA.items, properties: { ...SKILL_ASSESSMENT_SCHEMA.items.properties, skill: { type: "string", enum: ["aim", "crosshair"] } } } } } : {}),
         ...(createMonthlyPlan ? { monthly_plan: MONTHLY_PLAN_SCHEMA } : {}),
         ...(monthlyTask ? { monthly_check: REVIEW_SCHEMA.properties.mission_check } : {}),
       },
@@ -298,7 +310,7 @@ export async function POST(request: Request) {
 
     const content: Array<Record<string, unknown>> = [{
       type: "input_text",
-      text: `以下はデス前20秒からデス後5秒まで、順番に並んだフレームです。画面で確認できる内容だけを根拠にレビューしてください。\n試合情報: ${JSON.stringify(metadata)}\n前回ミッション: ${previousMission || "なし（今回は新しいミッションの作成だけ行う）"}\n月間ミッション: ${monthlyTask ? JSON.stringify(monthlyTask) : "なし"}`,
+      text: `${mode === "aim" ? `以下はユーザーが選んだ基準時刻の前後0.4秒のAIM用6枚です。切り出しは${aimCrop === "center" ? "画面中央の固定領域（拡大）" : "全画面"}。基準時刻は実際の発砲時刻とは限りません。` : "以下はデス前20秒からデス後5秒まで、順番に並んだフレームです。"}画面で確認できる内容だけを根拠にレビューしてください。\n試合情報: ${JSON.stringify(metadata)}\n前回ミッション: ${previousMission || "なし"}\n月間ミッション: ${monthlyTask ? JSON.stringify(monthlyTask) : "なし"}`,
     }];
     for (const frame of frames) {
       content.push({ type: "input_text", text: `${frame.label}${frame.time === null ? "" : ` / 録画時刻 ${frame.time} 秒`}` });
@@ -313,14 +325,14 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         model,
-        instructions: COACH_INSTRUCTIONS + (monthlyTask ? "\n前回ミッションはmission_check、月間ミッションはmonthly_checkで独立に判定してください。monthly_checkにも同じ厳密な映像根拠・秒数・high確信度の条件を適用します。月間の課題と達成条件を前回ミッションで置き換えないでください。" : "") + (createMonthlyPlan ? `\n今回は30日間のミッションを作ります。monthly_planを必ず4項目で出してください。
+        instructions: (mode === "aim" ? AIM_COACH_INSTRUCTIONS : COACH_INSTRUCTIONS) + (monthlyTask ? "\n前回ミッションはmission_check、月間ミッションはmonthly_checkで独立に判定してください。monthly_checkにも同じ厳密な映像根拠・秒数・high確信度の条件を適用します。月間の課題と達成条件を前回ミッションで置き換えないでください。" : "") + (createMonthlyPlan ? `\n今回は30日間のミッションを作ります。monthly_planを必ず4項目で出してください。
 今回の反省点をもとに、第1週は基本の修正、第2週は別の試合で再現、第3週は関連した判断へ応用、第4週は今月の重点を再確認する流れにしてください。
 各項目はtitle（短い見出し）、action（1つの具体的行動）、success_criteria（別の録画の時系列画像から確認できる達成条件）で構成します。
 各課題は最短で1回の次試合レビューで判定できる内容にし、毎日アップロードする条件や特定のマップ・エージェントでないと挑戦できない条件は避けてください。
 4課題すべて同じ文章にせず、今回の根拠に沿った段階的な内容にしてください。判定材料が足りない場合statusをinsufficientとしてください。` : ""),
         input: [{ role: "user", content }],
         reasoning: { effort: "low" },
-        max_output_tokens: createMonthlyPlan ? 3600 : monthlyTask ? 3000 : 2600,
+        max_output_tokens: mode === "aim" ? AIM_OUTPUT_LIMIT : createMonthlyPlan ? 3600 : monthlyTask ? 3000 : 2600,
         store: false,
         text: {
           format: {
@@ -338,8 +350,13 @@ export async function POST(request: Request) {
     if (!upstream.ok) return json({ ok: false, error: personalKey ? friendlyApiError(upstream.status, upstreamBody) : "AIサービスへの接続に失敗しました。試合枠は消費していません。時間をおいて再度お試しください。" }, 502);
 
     const review = validateReview(JSON.parse(extractOutputText(upstreamBody)));
-    review.evidence_frames = review.evidence_frames.filter(item => frames.some(frame => frame.time !== null && Math.abs(frame.time - item.time) < 0.01));
-    if (!review.evidence_frames.length) {
+    review.mode = mode;
+    review.aim_crop = mode === "aim" ? aimCrop : undefined;
+    review.evidence_frames = review.evidence_frames.flatMap(item => {
+      const match = frames.find(frame => frame.time !== null && Math.abs(frame.time - item.time) < 0.01);
+      return match ? [{ ...item, time: match.time! }] : [];
+    });
+    if (!review.evidence_frames.length || (mode === "aim" && new Set(review.evidence_frames.map(frame => frame.time)).size < 3)) {
       review.status = "insufficient";
       review.headline = "根拠を確認できる場面を選び直してください";
       review.observed = []; review.improvements = [];
@@ -353,7 +370,7 @@ export async function POST(request: Request) {
       review.mission_check = previousMission ? verifiedMonthlyCheck(review.mission_check, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), review.status === "ok")
         : { status: "not_applicable", confidence: "low", evidence: "今回は前回ミッションの判定対象ではありません。", evidence_times: [] };
     }
-    review.skill_assessments = verifiedSkillRatings(review.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), review.status === "ok");
+    review.skill_assessments = verifiedSkillRatings(review.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), review.status === "ok", mode);
     let monthlyResult: Record<string, unknown> = {};
     if (monthlyContext && missionDb) {
       try {
@@ -367,14 +384,15 @@ export async function POST(request: Request) {
         monthlyResult = { monthlySaved: false, xpAwarded: 0, monthlyNotice: "レビューは完了しましたが、月間ミッションを保存できませんでした。進捗を再読み込みして確認してください。" };
       }
     }
-    const growthAnalysisId = reservation?.id || (user && /^[a-f0-9]{64}$/.test(recordingId) ? `personal:${recordingId}:${Math.round(Number(body.deathTimestamp) || 0)}` : null);
-    const payload = { ok: true, review, model: cleanText(upstreamBody.model, 80) || model, usage: upstreamBody.usage ?? {}, analysisId: reservation?.id || null, growthNotice: "", ...monthlyResult };
+    const growthAnalysisId = reservation?.id || (user && /^[a-f0-9]{64}$/.test(recordingId) ? `personal:${recordingId}:${analysisSceneKey(mode, Number(body.deathTimestamp) || 0, aimCrop)}` : null);
+    const usage = upstreamBody.usage && typeof upstreamBody.usage === "object" ? upstreamBody.usage as Record<string, unknown> : {};
+    const payload = { ok: true, review, model: cleanText(upstreamBody.model, 80) || model, usage: { ...usage, review_mode: mode, input_images: frames.length }, analysisId: reservation?.id || null, growthNotice: "", ...monthlyResult };
     if (reservation) {
       await completeAnalysis(reservation, { ok: true, review, model: payload.model }, review.status === "ok", payload.usage);
       reservation = null;
     }
     if (user && growthAnalysisId) {
-      try { await saveAiGrowth(getMissionDb(), user.id, growthAnalysisId, verifiedSkillRatings(review.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), review.status === "ok"), `${metadata.map || "マップ未設定"} / ${metadata.agent || metadata.role || "エージェント未設定"} / ${metadata.timestamp || "レビュー"}`); }
+      try { await saveAiGrowth(getMissionDb(), user.id, growthAnalysisId, verifiedSkillRatings(review.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), review.status === "ok", mode), `${mode === "aim" ? "AIM" : "立ち回り"} / ${metadata.map || "マップ未設定"} / ${metadata.agent || metadata.role || "エージェント未設定"} / ${metadata.timestamp || "レビュー"}`); }
       catch { payload.growthNotice = "成長グラフに保存できませんでした。同じ場面の再表示で再度反映を試せます。"; }
     }
     return json(payload);

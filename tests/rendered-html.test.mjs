@@ -67,6 +67,8 @@ test("renders development preview metadata", async () => {
   assert.match(html, /<kbd>D<\/kbd>/);
   assert.match(html, /録画なしでサンプルを見る/);
   assert.match(html, /最大6枚の画像/);
+  assert.match(html, /両モード同料金/);
+  assert.match(html, /立ち回り1回＋AIM2回/);
   assert.match(html, /AIレビューは準備中/);
   assert.match(html, /あなたの成長マップ/);
   assert.match(html, /ピークアドバンテージ/);

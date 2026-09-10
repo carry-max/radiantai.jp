@@ -16,6 +16,8 @@ after(async () => { await vite.close(); delete globalThis.__ANALYSIS_TEST_ENV__;
 const access = await vite.ssrLoadModule("/lib/analysis-access.ts");
 const billing = await vite.ssrLoadModule("/lib/billing.ts");
 const api = await vite.ssrLoadModule("/app/api/analyze/route.ts");
+const modes = await vite.ssrLoadModule("/lib/review-modes.ts");
+const growth = await vite.ssrLoadModule("/lib/player-growth.ts");
 const feedback = await vite.ssrLoadModule("/app/api/review-feedback/route.ts");
 const migrations = await Promise.all(["0000_steep_scarlet_spider.sql", "0002_goofy_rawhide_kid.sql", "0003_demonic_avengers.sql"].map(name => readFile(new URL(`../drizzle/${name}`, import.meta.url), "utf8")));
 function database() {
@@ -184,4 +186,69 @@ test("subscription renewal refreshes the period and ignores another subscription
     await billing.updateSubscription({ id: "sub_current", metadata: { user_id: "owner" }, status: "past_due" });
     assert.equal((await billing.getEntitlement("owner")).status, "inactive");
   } finally { delete globalThis.__ANALYSIS_TEST_ENV__.DB; db.sqlite.close(); }
+});
+
+test("AIM capture windows validate at boundaries, caches separate mode and crop, offsets preserve aspect", () => {
+  for (const anchor of [0.4, 5.1234, 9.55]) {
+    const targets = modes.captureTargets("aim", anchor, 10);
+    assert.equal(targets.length, 6);
+    assert.equal(modes.validAimSequence(targets.map(t => t.time), anchor), true);
+  }
+  for (const anchor of [0.39, 9.57, 10, NaN]) assert.deepEqual(modes.captureTargets("aim", anchor, 10), []);
+  assert.equal(modes.analysisSceneKey("tactics", 10.2), "10");
+  assert.equal(new Set([modes.analysisSceneKey("tactics", 10), modes.analysisSceneKey("aim", 10), modes.analysisSceneKey("aim", 10, "full"), modes.analysisSceneKey("aim", 10.001)]).size, 4);
+  assert.ok(Math.abs(modes.targetOffset({x:.6,y:.5},{x:.5,y:.5},2).distance - 20) < 1e-9);
+  assert.equal(modes.targetOffset({x:2,y:.5},{x:.5,y:.5},1), null);
+  const forged = {skill:"aim",level:3,evidence:"同じ照準",times:[10,10.001,10.002]};
+  assert.deepEqual(growth.verifiedSkillRatings([forged],[9.6,9.8,10],true,"aim"),[]);
+  assert.equal(growth.verifiedSkillRatings([{...forged,times:[9.601,9.801,10.001]}],[9.6,9.8,10],true,"aim")[0].times.length,3);
+  assert.deepEqual(growth.verifiedSkillRatings([{...forged,times:[9.6,9.8,10]}],[9.6,9.8,10],true,"tactics"),[]);
+});
+
+test("AIM uses one six-image call and shared credits, excludes monthly XP, and holds duplicated evidence", async () => {
+  const db=database(); const originalFetch=globalThis.fetch;
+  Object.assign(globalThis.__ANALYSIS_TEST_ENV__,{DB:db,OPENAI_API_KEY:"test-server-key"});
+  let calls=0; let duplicateEvidence=false;
+  const frames=modes.captureTargets("aim",10,30).map(({time})=>({time,label:"AIM",dataUrl:"data:image/jpeg;base64,AA=="}));
+  const send=(mode="aim",crop="center",input=frames)=>api.POST(new Request("https://review.test/api/analyze",{
+    method:"POST",headers:{"oai-authenticated-user-id":"owner","content-type":"application/json"},
+    body:JSON.stringify({mode,aimCrop:crop,recordingId:"b".repeat(64),deathTimestamp:10,frames:input,monthlyTracking:mode==="aim",previousMission:"必ずクリア",renewMonthly:true}),
+  }));
+  globalThis.fetch=async (_url,options)=>{
+    calls++; const body=JSON.parse(options.body); const isAim=body.instructions.includes("試合後AIM");
+    assert.equal(body.input[0].content.filter(c=>c.type==="input_image").length,6);
+    assert.ok(body.input[0].content.filter(c=>c.type==="input_image").every(c=>c.detail==="low"));
+    assert.equal(body.max_output_tokens,2600); assert.equal(body.store,false);
+    if(isAim){ assert.deepEqual(body.text.format.schema.properties.skill_assessments.items.properties.skill.enum,["aim","crosshair"]); assert.ok(!body.text.format.schema.properties.monthly_plan); }
+    const times=duplicateEvidence?[10,10.001,10.002]:[9.6,9.8,10];
+    return Response.json({usage:{input_tokens:600,output_tokens:300},output_text:JSON.stringify({
+      status:"ok",headline:"照準を置く",observed:["頭の高さに照準"],
+      evidence_frames:times.map(time=>({time,observation:"同じ敵と照準が見える"})),
+      skill_assessments:[{skill:isAim?"aim":"crosshair",level:3,evidence:"位置関係を確認",times}],
+      main_issue:{category:"照準の初期位置",severity:"low",evidence:"頭の高さに置く"},improvements:["同じ距離で確認"],next_focus:"頭の高さを確認",
+      mission_check:{status:"cleared",confidence:"high",evidence:"達成",evidence_times:[10]},confidence:"medium",uncertainty:"画像間の動きは不明",
+    })});
+  };
+  try {
+    const malformed=await send("aim","center",frames.slice(1)); assert.equal(malformed.status,400); assert.equal(calls,0);
+    const first=await send(); const result=await first.json(); assert.equal(first.status,200,JSON.stringify(result));
+    assert.equal(result.review.mode,"aim"); assert.equal(result.review.mission_check.status,"not_applicable"); assert.ok(!result.monthly); assert.ok(!result.xpAwarded);
+    assert.equal(result.review.skill_assessments[0].skill,"aim"); assert.equal(calls,1);
+    assert.equal((await (await send()).json()).cached,true); assert.equal(calls,1);
+    duplicateEvidence=true;
+    const held=await (await send("aim","full")).json(); assert.equal(held.review.status,"insufficient"); assert.deepEqual(held.review.skill_assessments,[]);
+    assert.equal((await access.readAllowance(db,"owner",null)).recordings[0].scenesUsed,1);
+    duplicateEvidence=false;
+    assert.equal((await send("aim","full")).status,200);
+    const tactics=await (await send("tactics")).json(); assert.equal(tactics.review.mode,"tactics"); assert.ok(!tactics.cached);
+    assert.equal((await access.readAllowance(db,"owner",null)).recordings[0].scenesUsed,3);
+    const later=frames.map(f=>({...f,time:f.time+1}));
+    const exhausted=await api.POST(new Request("https://review.test/api/analyze",{method:"POST",headers:{"oai-authenticated-user-id":"owner"},body:JSON.stringify({mode:"aim",recordingId:"b".repeat(64),deathTimestamp:11,frames:later})}));
+    assert.equal(exhausted.status,402); assert.equal(calls,4);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) n FROM player_growth_records").get().n,3);
+    const usage=JSON.parse(db.sqlite.prepare("SELECT usage_json FROM analysis_records WHERE scene_key = 'aim:center:10000' AND status = 'succeeded'").get().usage_json);
+    assert.equal(usage.review_mode,"aim"); assert.equal(usage.input_images,6);
+    assert.equal(billing.getBillingPlanDetails("card_monthly").priceYen,900);
+    assert.equal(billing.getBillingPlanDetails("climb_card_monthly").priceYen,1800);
+  } finally {globalThis.fetch=originalFetch;delete globalThis.__ANALYSIS_TEST_ENV__.DB;delete globalThis.__ANALYSIS_TEST_ENV__.OPENAI_API_KEY;db.sqlite.close();}
 });

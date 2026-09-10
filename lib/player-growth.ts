@@ -55,18 +55,20 @@ export type SkillRating = { skill: PlayerSkillId; level: number; evidence: strin
 export type PlayerGrowthRecord = { id: string; source: GrowthSource; recordedAt: string; label: string; note: string; ratings: SkillRating[] };
 export const LEVEL_LABELS = ["未評価", "1 · 基礎を確認", "2 · 意識するとできる", "3 · この条件でできる", "4 · 安定してできる", "5 · 条件が変わっても再現"];
 
-export function verifiedSkillRatings(value: unknown, frameTimes: number[], reviewOk: boolean): SkillRating[] {
+export function verifiedSkillRatings(value: unknown, frameTimes: number[], reviewOk: boolean, mode: "tactics" | "aim" = "tactics"): SkillRating[] {
   if (!reviewOk || !Array.isArray(value)) return [];
   const used = new Set<string>();
   return value.flatMap(raw => {
     if (!raw || typeof raw !== "object") return [];
     const item = raw as Record<string, unknown>;
     const skill = PLAYER_SKILLS.find(s => s.id === item.skill);
-    if (!skill?.ai || used.has(skill.id) || !Number.isInteger(item.level) || Number(item.level) < 1 || Number(item.level) > 3) return [];
+    if (!skill || !(mode === "aim" ? skill.id === "aim" || skill.id === "crosshair" : skill.ai) || used.has(skill.id) || !Number.isInteger(item.level) || Number(item.level) < 1 || Number(item.level) > 3) return [];
     if (typeof item.evidence !== "string" || !item.evidence.trim() || item.evidence.length > 500 || !Array.isArray(item.times) || !item.times.length || item.times.length > 6) return [];
     if (!item.times.every(t => typeof t === "number" && Number.isFinite(t) && frameTimes.some(input => Math.abs(input - t) < 0.01))) return [];
+    const times = [...new Set((item.times as number[]).map(t => frameTimes.find(input => Math.abs(input - t) < 0.01)!))];
+    if (skill.id === "aim" && times.length < 3) return [];
     used.add(skill.id);
-    return [{ skill: skill.id, level: Number(item.level), evidence: item.evidence.trim(), times: item.times as number[] }];
+    return [{ skill: skill.id, level: Number(item.level), evidence: item.evidence.trim(), times }];
   }).slice(0, 8);
 }
 
