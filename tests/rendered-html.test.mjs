@@ -76,12 +76,24 @@ test("renders development preview metadata", async () => {
   assert.match(html, /今日の評価を記録/);
   assert.match(html, /未評価は0点にせず欠測/);
   assert.ok(html.indexOf('class="workspace-grid"') < html.indexOf('class="growth-level-strip"'));
-  for (const [path, expected] of [["/legal", /特定商取引法に基づく表記/], ["/privacy", /動画全体・音声は送信せず/]]) {
+  for (const [path, expected] of [["/legal", /特定商取引法に基づく表記/], ["/privacy", /動画全体・音声は送信せず/], ["/account", /Googleでログイン[\s\S]*X（Twitter）でログイン/]]) {
     const page = await worker.fetch(new Request(`http://localhost${path}`, { headers: { accept: "text/html" } }),
       { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
       { waitUntil() {}, passThroughOnException() {} });
     assert.equal(page.status, 200); assert.match(await page.text(), expected);
   }
+
+  const authSession = await worker.fetch(new Request("http://localhost/auth/session"),
+    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+    { waitUntil() {}, passThroughOnException() {} });
+  assert.equal(authSession.status, 200);
+  assert.equal((await authSession.json()).configured, false);
+  assert.match(authSession.headers.get("Cache-Control"), /private, no-store/);
+  const authStart = await worker.fetch(new Request("http://localhost/auth/start", { method: "POST" }),
+    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+    { waitUntil() {}, passThroughOnException() {} });
+  assert.equal(authStart.status, 303);
+  assert.match(authStart.headers.get("Location"), /status=setup/);
 
   const invalidAnalyzeResponse = await worker.fetch(
     new Request("http://localhost/api/analyze", {

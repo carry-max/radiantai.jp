@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AccountProvider } from "@/components/account-provider";
 
 export const metadata: Metadata = {
   title: "Radiant Review | VALORANT VOD Coach",
@@ -21,7 +22,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased"><AccountProvider>{children}</AccountProvider></body>
     </html>
   );
 }

@@ -4,6 +4,7 @@
 @import "./monthly-missions.css";
 @import "./player-growth.css";
 @import "./aim-review.css";
+@import "./account.css";
 
 @utility scrollbar-thin {
   scrollbar-width: thin;

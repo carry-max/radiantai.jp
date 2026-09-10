@@ -1,5 +1,12 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
+export const authAccounts = sqliteTable("auth_accounts", {
+  subject: text("subject").primaryKey(),
+  userId: text("user_id").notNull().unique(),
+  createdAt: text("created_at").notNull(),
+  lockedAt: text("locked_at"),
+});
+
 export const billingEntitlements = sqliteTable("billing_entitlements", {
   userId: text("user_id").primaryKey(),
   email: text("email").notNull().default(""),

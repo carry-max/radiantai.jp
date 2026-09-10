@@ -1,6 +1,6 @@
 import { MONTHLY_PLAN_SCHEMA, verifiedMonthlyCheck } from "@/lib/monthly-missions";
 import { getMissionDb, prepareMonthlyReview, saveMonthlyReview, type MonthlyContext, type MissionDatabase } from "@/lib/monthly-store";
-import { getSiteUser } from "@/lib/site-user";
+import { getSiteUser, withAuth } from "@/lib/site-user";
 import { serviceConfig, sameOriginRequest } from "@/lib/service-config";
 import { getEntitlement } from "@/lib/billing";
 import { AccessError, reserveAnalysis, completeAnalysis, failAnalysis, getAnalysisAllowance, type Reservation } from "@/lib/analysis-access";
@@ -237,7 +237,7 @@ async function readAnalyzeBody(request: Request): Promise<AnalyzeBody> {
   } finally { reader.releaseLock(); }
 }
 
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   let reservation: Reservation | null = null;
   try {
     if (!sameOriginRequest(request)) return json({ ok: false, error: "このサイトから解析を開始してください。" }, 403);
@@ -261,7 +261,7 @@ export async function POST(request: Request) {
     if (mode === "aim" && !validAimSequence(frames.map(frame => frame.time), body.deathTimestamp)) throw new RequestError("AIMは基準時刻の前後0.4秒・6枚で解析します。AIMモードで切り出し直してください。");
     const metadata = cleanMetadata(body.metadata);
     const previousMission = mode === "tactics" ? cleanText(body.previousMission, 320) : "";
-    const user = getSiteUser(request);
+    const user = await getSiteUser(request);
     const recordingId = cleanText(body.recordingId, 64);
     if (!personalKey) {
       if (!user) return json({ ok: false, error: "無料体験・プランの解析にはログインが必要です。" }, 401);
@@ -282,7 +282,7 @@ export async function POST(request: Request) {
     let monthlyContext: MonthlyContext | null = null;
     let missionDb: MissionDatabase | null = null;
     if (mode === "tactics" && body.monthlyTracking === true) {
-      const user = getSiteUser(request);
+      const user = await getSiteUser(request);
       if (!user) return json({ ok: false, error: "ミッションを保存するにはログインしてください。" }, 401);
       const recordingId = cleanText(body.recordingId, 64);
       if (!/^[a-f0-9]{64}$/.test(recordingId)) throw new RequestError("録画の識別情報を準備できませんでした。動画を選び直してください。");
@@ -410,8 +410,8 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET(request: Request) {
-  const user = getSiteUser(request);
+async function getHandler(request: Request) {
+  const user = await getSiteUser(request);
   const configured = Boolean(serviceConfig().apiKey);
   try {
     return json({ configured, signedIn: Boolean(user), allowance: user ? await getAnalysisAllowance(user.id) : null });
@@ -419,3 +419,6 @@ export async function GET(request: Request) {
     return json({ configured, signedIn: Boolean(user), allowance: null, error: "解析枠を読み込めませんでした。再読み込みしてください。" }, 503);
   }
 }
+
+export const POST = withAuth(postHandler);
+export const GET = withAuth(getHandler);

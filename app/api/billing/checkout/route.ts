@@ -5,16 +5,16 @@ import {
   salesConfigured, getEntitlement,
   stripeRequest,
 } from "@/lib/billing";
-import { getSiteUser } from "@/lib/site-user";
+import { getSiteUser, withAuth } from "@/lib/site-user";
 import { serviceConfig, sameOriginRequest } from "@/lib/service-config";
 
 type CheckoutResponse = { id: string; url: string | null };
 
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   if (!sameOriginRequest(request)) return Response.json({ error: "このサイトから購入を開始してください。" }, { status: 403 });
-  const user = getSiteUser(request);
+  const user = await getSiteUser(request);
   if (!user) {
-    return Response.json({ error: "購入にはChatGPTへのサインインが必要です。" }, { status: 401 });
+    return Response.json({ error: "購入にはログインが必要です。" }, { status: 401 });
   }
 
   const body = await request.json().catch(() => null) as { plan?: unknown } | null;
@@ -82,3 +82,5 @@ export async function POST(request: Request) {
     return Response.json({ error: message }, { status: 502 });
   }
 }
+
+export const POST = withAuth(postHandler);

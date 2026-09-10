@@ -1,9 +1,9 @@
 import { getEntitlement, salesConfigured } from "@/lib/billing";
-import { getSiteUser } from "@/lib/site-user";
+import { getSiteUser, withAuth } from "@/lib/site-user";
 import { serviceConfig } from "@/lib/service-config";
 
-export async function GET(request: Request) {
-  const user = getSiteUser(request);
+async function getHandler(request: Request) {
+  const user = await getSiteUser(request);
   if (!user) {
     return Response.json({ configured: salesConfigured(), paypayEnabled: serviceConfig().paypayEnabled, entitlement: null }, { status: 401, headers: { "Cache-Control": "no-store" } });
   }
@@ -21,3 +21,5 @@ export async function GET(request: Request) {
     }, { status: 503 });
   }
 }
+
+export const GET = withAuth(getHandler);

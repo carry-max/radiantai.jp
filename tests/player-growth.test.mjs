@@ -49,7 +49,7 @@ test("all authenticated users can persist and reload self-ratings without AI or 
   try {
     assert.equal((await api.POST(request("POST", "owner", body))).status, 200);
     assert.equal((await api.POST(request("POST", "owner", body))).status, 200);
-    const saved = await api.GET(request("GET", "owner")); assert.equal(saved.headers.get("cache-control"), "no-store");
+    const saved = await api.GET(request("GET", "owner")); assert.match(saved.headers.get("cache-control"), /(?:^|,\s*)no-store(?:,|$)/);
     const result = await saved.json(); assert.equal(result.records.length, 1); assert.equal(result.records[0].ratings[0].level, 3); assert.equal(result.records[0].source, "self");
     assert.equal((await (await api.GET(request("GET", "other"))).json()).records.length, 0);
     assert.equal((await api.DELETE(request("DELETE", "other", { id: body.id }))).status, 404);

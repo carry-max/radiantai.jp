@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Activity, ArrowDownRight, ArrowUpRight, BookOpen, Check, Crosshair, LoaderCircle, Plus, RotateCcw, ShieldCheck, Trash2 } from "lucide-react";
+import { useAccount } from "@/components/account-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -31,6 +32,7 @@ function RadarShape({ values, previous = false }: { values: (number | null)[]; p
 }
 
 export function PlayerGrowth({ refreshKey = 0 }: { refreshKey?: number }) {
+  const accountFetch = useAccount().request;
   const [data, setData] = useState<GrowthData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -54,13 +56,13 @@ export function PlayerGrowth({ refreshKey = 0 }: { refreshKey?: number }) {
     const id = ++requestId.current;
     setLoading(true); setError("");
     try {
-      const response = await fetch("/api/player-growth", { cache: "no-store" });
+      const response = await accountFetch("/api/player-growth", { cache: "no-store" });
       const next = await response.json() as GrowthData;
       if (!response.ok) throw new Error(next.error || "成長記録を読み込めませんでした。");
       if (id === requestId.current) setData(next);
     } catch (e) { if (id === requestId.current) setError(e instanceof Error ? e.message : "読み込みに失敗しました。"); }
     finally { if (id === requestId.current) setLoading(false); }
-  }, []);
+  }, [accountFetch]);
   useEffect(() => {
     const timer = window.setTimeout(() => void reload(), 0);
     const visible = () => { if (document.visibilityState === "visible") void reload(); };
@@ -88,7 +90,7 @@ export function PlayerGrowth({ refreshKey = 0 }: { refreshKey?: number }) {
     if (!ratings.length) { setSaveError("確認できた項目を1つ以上選んでください。"); return; }
     setSaving(true); setSaveError("");
     try {
-      const response = await fetch("/api/player-growth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: recordId.current, label: label.trim() || "今日の振り返り", note: note.trim(), ratings }) });
+      const response = await accountFetch("/api/player-growth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: recordId.current, label: label.trim() || "今日の振り返り", note: note.trim(), ratings }) });
       const result = await response.json() as { error?: string };
       if (!response.ok) throw new Error(result.error || "保存できませんでした。");
       setEditorOpen(false); setSource("self"); setExample(false); setNotice("自己評価を保存しました。次の記録と比較していきましょう。"); await reload();
@@ -99,7 +101,7 @@ export function PlayerGrowth({ refreshKey = 0 }: { refreshKey?: number }) {
     if (!window.confirm(`${dateLabel(record.recordedAt)}「${record.label}」の自己評価を削除しますか？グラフも再計算します。`)) return;
     setDeleting(record.id); setNotice("");
     try {
-      const response = await fetch("/api/player-growth", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: record.id }) });
+      const response = await accountFetch("/api/player-growth", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: record.id }) });
       const result = await response.json() as { error?: string };
       if (!response.ok) throw new Error(result.error || "削除できませんでした。");
       setNotice("自己評価を削除しました。"); await reload();

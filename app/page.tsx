@@ -66,6 +66,8 @@ import { MonthlyMissions } from "@/components/monthly-missions";
 import { PlayerGrowth } from "@/components/player-growth";
 import { AimMeasurement } from "@/components/aim-measurement";
 import { captureTargets, preciseTime, aimFrameLabel, type ReviewMode, type AimCrop } from "@/lib/review-modes";
+import { AccountLink, useAccount } from "@/components/account-provider";
+import { accountStorageKeys } from "@/lib/account-storage";
 import type { AnalysisAllowance } from "@/lib/analysis-access";
 import { fingerprintRecording, monthlyPhase, type MonthlySummary } from "@/lib/monthly-missions";
 import {
@@ -161,8 +163,6 @@ type BillingEntitlement = {
   remainingDays: number;
 };
 
-const HISTORY_KEY = "radiant-review-web-history-v1";
-const GROWTH_KEY = "radiant-review-web-growth-v1";
 const XP_PER_CLEAR = 50;
 const XP_PER_LEVEL = 100;
 const MAX_VOD_SECONDS = 60 * 60;
@@ -311,6 +311,9 @@ export default function Home() {
   const [reviewMode, setReviewMode] = useState<ReviewMode>("tactics");
   const [aimCrop, setAimCrop] = useState<AimCrop>("center");
   const captureRunRef = useRef(0);
+  const account = useAccount();
+  const accountFetch = account.request;
+  const { history: HISTORY_KEY, growth: GROWTH_KEY } = accountStorageKeys(account.snapshot?.user?.id || "signed-out");
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resultRef = useRef<HTMLElement>(null);
@@ -388,7 +391,7 @@ export default function Home() {
     setMonthlyLoading(true);
     setMonthlyError("");
     try {
-      const response = await fetch("/api/missions", { cache: "no-store" });
+      const response = await accountFetch("/api/missions", { cache: "no-store" });
       const data = await response.json() as MonthlySummary & { error?: string };
       if (readId !== monthlyReadRef.current) return;
       if (!response.ok) throw new Error(data.error || "月間ミッションを読み込めませんでした。");
@@ -397,17 +400,17 @@ export default function Home() {
     } catch (error) {
       if (readId === monthlyReadRef.current) setMonthlyError(error instanceof Error ? error.message : "月間ミッションを読み込めませんでした。");
     } finally { if (readId === monthlyReadRef.current) setMonthlyLoading(false); }
-  }, []);
+  }, [accountFetch]);
 
   const reloadAllowance = useCallback(async () => {
     try {
-      const response = await fetch("/api/analyze", { cache: "no-store" });
+      const response = await accountFetch("/api/analyze", { cache: "no-store" });
       const data = await response.json() as { configured?: boolean; signedIn?: boolean; allowance?: AnalysisAllowance | null; error?: string };
       setServiceReady(Boolean(data.configured)); setSignedIn(Boolean(data.signedIn));
       setAllowance(data.allowance || null);
       setAllowanceError(response.ok ? "" : data.error || "解析枠を確認できませんでした。");
     } catch { setAllowanceError("解析枠を読み込めませんでした。再読み込みしてください。"); }
-  }, []);
+  }, [accountFetch]);
   useEffect(() => {
     const start = window.setTimeout(() => void reloadAllowance(), 0);
     return () => window.clearTimeout(start);
@@ -423,6 +426,7 @@ export default function Home() {
 
   useEffect(() => {
     const loadSavedHistory = window.setTimeout(() => {
+      if (!account.snapshot?.user) return;
       try {
         const saved = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
         if (Array.isArray(saved)) setHistoryItems(saved.filter((entry: HistoryEntry) => entry.model !== "demo").slice(0, 50));
@@ -472,7 +476,7 @@ export default function Home() {
         if (checkoutState === "success" && sessionId) {
           setPricingOpen(true);
           setBillingNotice({ message: "支払い結果を確認しています…", tone: "neutral" });
-          const response = await fetch("/api/billing/confirm", {
+          const response = await accountFetch("/api/billing/confirm", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ sessionId }),
@@ -497,7 +501,7 @@ export default function Home() {
           window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
         }
 
-        const response = await fetch("/api/billing/status", { cache: "no-store" });
+        const response = await accountFetch("/api/billing/status", { cache: "no-store" });
         const result = (await response.json()) as { configured?: boolean; paypayEnabled?: boolean; entitlement?: BillingEntitlement | null };
         if (active) {
           setBillingConfigured(Boolean(result.configured));
@@ -546,7 +550,7 @@ export default function Home() {
       localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
       return next;
     });
-  }, [deathSource, fileName, matchContext, matchId]);
+  }, [deathSource, fileName, matchContext, matchId, HISTORY_KEY]);
 
   const loadVideo = useCallback((file?: File) => {
     if (!file) return;
@@ -890,7 +894,7 @@ export default function Home() {
       const nextRecordingId = recordingId || await fingerprintRecording(file);
       if (runId !== analysisRunRef.current) return;
       setRecordingId(nextRecordingId);
-      const response = await fetch("/api/analyze", {
+      const response = await accountFetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...(apiKey.trim() ? { apiKey: apiKey.trim(), model } : {}), mode: reviewMode, aimCrop, deathTimestamp, metadata: matchContext, previousMission, monthlyTracking: reviewMode === "tactics", recordingId: nextRecordingId, renewMonthly, frames: frames.map(({ label, dataUrl, time }) => ({ label, dataUrl, time })) }),
@@ -1062,7 +1066,7 @@ export default function Home() {
     setCheckoutPlan(plan);
     setBillingNotice(null);
     try {
-      const response = await fetch("/api/billing/checkout", {
+      const response = await accountFetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan }),
@@ -1086,7 +1090,7 @@ export default function Home() {
     if (!analysisId || isDemo) return;
     setFeedbackNotice("評価を保存しています…");
     try {
-      const response = await fetch("/api/review-feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: analysisId, rating }) });
+      const response = await accountFetch("/api/review-feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: analysisId, rating }) });
       if (!response.ok) throw new Error();
       setFeedbackNotice(rating === "helpful" ? "役立ったという評価を保存しました。" : "見直しが必要という評価を保存しました。");
     } catch { setFeedbackNotice("評価を保存できませんでした。もう一度お試しください。"); }
@@ -1094,7 +1098,7 @@ export default function Home() {
   const cancelRenewal = async () => {
     setCancelBusy(true);
     try {
-      const response = await fetch("/api/billing/cancel", { method: "POST" });
+      const response = await accountFetch("/api/billing/cancel", { method: "POST" });
       const data = await response.json() as { error?: string; message?: string };
       if (!response.ok) throw new Error(data.error || "更新停止を確認できませんでした。");
       setBillingNotice({ tone: "success", message: data.message || "次回の自動更新を停止しました。" });
@@ -1113,6 +1117,7 @@ export default function Home() {
           <span><strong>RADIANT REVIEW</strong><small>VALORANT VOD COACH</small></span>
         </a>
         <div className="top-actions">
+          <AccountLink />
           <span className="local-state"><ShieldCheck aria-hidden="true" /> 動画は端末内で処理</span>
           <Button asChild variant="outline" className="top-growth"><a href="#player-growth"><Activity /> 成長グラフ</a></Button>
           <Button type="button" variant="outline" onClick={() => setPricingOpen(true)} className="top-pricing"><Wallet /> {entitlement?.status === "active" ? `残り${entitlement.remainingDays}日` : "料金・利用状況"}</Button>
@@ -1278,7 +1283,7 @@ export default function Home() {
                 <p>{apiKey.trim() ? "API料金はご自身のOpenAIアカウントに発生します。プランの試合枠は使いません。" : serviceReady ? `1試合につき両モード合計3解析。${recordingId ? `この録画は${currentScenes} / 3場面を解析済み。` : "無料体験は1アカウント1試合です。"}` : "録画の切り出しとサンプルは利用できます。購入・請求はありません。"}</p>
                 {allowanceError ? <p role="alert">{allowanceError}</p> : null}
                 <Button variant="ghost" size="sm" onClick={() => void reloadAllowance()}><RotateCcw /> 利用状況を更新</Button>
-                {serviceReady && !signedIn ? <a href="/signin-with-chatgpt?return_to=%2F" target="_top">ログインして無料体験</a> : null}
+                {serviceReady && !signedIn ? <a href="/account" target="_top">ログインして無料体験</a> : null}
               </div>
               <SectionHeading step="03" eyebrow="ADD CONTEXT" title="試合情報（任意）" />
               <div className="form-grid">

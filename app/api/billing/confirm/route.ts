@@ -1,8 +1,8 @@
 import { recordPaidCheckout, stripeRequest, type StripeCheckoutSession } from "@/lib/billing";
-import { getSiteUser } from "@/lib/site-user";
+import { getSiteUser, withAuth } from "@/lib/site-user";
 
-export async function POST(request: Request) {
-  const user = getSiteUser(request);
+async function postHandler(request: Request) {
+  const user = await getSiteUser(request);
   if (!user) return Response.json({ error: "サインイン情報を確認できません。" }, { status: 401 });
   const body = await request.json().catch(() => ({})) as { sessionId?: unknown };
   const sessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : "";
@@ -27,3 +27,5 @@ export async function POST(request: Request) {
     return Response.json({ error: message }, { status: 502 });
   }
 }
+
+export const POST = withAuth(postHandler);
