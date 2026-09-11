@@ -67,8 +67,8 @@ async function postHandler(request: Request) {
     params.set("subscription_data[metadata][tier]", planDetails.tier);
     params.set("subscription_data[metadata][analysis_credits]", String(planDetails.analysisCredits));
   }
-  params.set("success_url", `${origin}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`);
-  params.set("cancel_url", `${origin}/?checkout=cancelled`);
+  params.set("success_url", `${origin}/pricing?checkout=success&session_id={CHECKOUT_SESSION_ID}`);
+  params.set("cancel_url", `${origin}/pricing?checkout=cancelled`);
 
   try {
     const checkout = await stripeRequest<CheckoutResponse>("/checkout/sessions", {

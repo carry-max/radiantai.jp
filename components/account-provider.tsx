@@ -56,7 +56,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     if (snapshot.user) headers.set("X-Radiant-Account", snapshot.user.id);
     const response = await fetch(path, { ...init, headers, cache: "no-store", credentials: "same-origin" });
     if (response.status === 409) {
-      const data = await response.clone().json().catch(() => null);
+      const data = await response.clone().json().catch(() => null) as { accountChanged?: boolean } | null;
       if (data?.accountChanged) { await refresh(); throw new Error("アカウントが変更されました。もう一度操作してください。"); }
     }
     if (response.status === 401 && snapshot.user) { await refresh(); throw new Error("ログインし直してください。"); }
@@ -74,5 +74,5 @@ export function useAccount() {
 }
 export function AccountLink() {
   const { snapshot } = useAccount();
-  return <a className="account-link" href="/account"><UserRound aria-hidden="true" /><span>{snapshot?.user ? "アカウント" : "ログイン"}</span></a>;
+  return <a className="account-link" href="/login"><UserRound aria-hidden="true" /><span>{snapshot?.user ? "アカウント" : "ログイン"}</span></a>;
 }

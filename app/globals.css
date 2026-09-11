@@ -5,6 +5,7 @@
 @import "./player-growth.css";
 @import "./aim-review.css";
 @import "./account.css";
+@import "./portal.css";
 
 @utility scrollbar-thin {
   scrollbar-width: thin;

@@ -45,43 +45,22 @@ test("renders development preview metadata", async () => {
   const html = await response.text();
   assert.match(html, developmentPreviewMeta);
   assert.match(html, /RADIANT REVIEW/);
-  assert.match(html, /最大60分/);
-  assert.match(html, /動画は端末内で処理/);
-  assert.match(html, /前20秒〜後5秒/);
-  assert.match(html, /デス地点を自動検出/);
-  assert.match(html, /追加API料金はありません/);
-  assert.match(html, /全ユーザー利用可/);
-  assert.match(html, /複数試合比較/);
-  assert.match(html, /苦手マップ・エージェント/);
-  assert.match(html, /反省点の推移・過去比較/);
-  assert.match(html, /成長レベル/);
-  assert.match(html, /次の別試合の録画だけでAI判定/);
-  assert.match(html, /クリアで \+50 XP/);
-  assert.match(html, /CLIMB/);
-  assert.match(html, /PAYPAY QR \+ STRIPE/);
-  assert.match(html, /Reviewは900円・5試合/);
-  assert.match(html, /税込1,800円/);
-  assert.match(html, /AI解析10試合/);
-  assert.match(html, /自動更新なし/);
-  assert.match(html, /1試合あたり180円相当/);
-  assert.match(html, /<kbd>D<\/kbd>/);
-  assert.match(html, /録画なしでサンプルを見る/);
-  assert.match(html, /最大6枚の画像/);
-  assert.match(html, /両モード同料金/);
-  assert.match(html, /立ち回り1回＋AIM2回/);
-  assert.match(html, /AIレビューは準備中/);
-  assert.match(html, /あなたの成長マップ/);
-  assert.match(html, /ピークアドバンテージ/);
-  assert.match(html, /クロスヘア配置/);
-  assert.match(html, /今日の評価を記録/);
-  assert.match(html, /未評価は0点にせず欠測/);
-  assert.ok(html.indexOf('class="workspace-grid"') < html.indexOf('class="growth-level-strip"'));
-  for (const [path, expected] of [["/legal", /特定商取引法に基づく表記/], ["/privacy", /動画全体・音声は送信せず/], ["/account", /Googleでログイン[\s\S]*X（Twitter）でログイン/]]) {
+  assert.match(html, /次の成長/);
+  assert.match(html, /無料で分析を試す/);
+  assert.match(html, /成長グラフを見る/);
+  assert.match(html, /立ち回り分析/);
+  assert.match(html, /AIM分析/);
+  assert.match(html, /Reviewは900円で5試合/);
+  assert.match(html, /Climbは1,800円で10試合/);
+  for (const [path, expected] of [["/analysis", /録画をドロップ/], ["/dashboard", /成長の現在地/], ["/pricing", /プレイ量に合わせた/], ["/login", /Googleでログイン[\s\S]*X（Twitter）でログイン/], ["/legal", /特定商取引法に基づく表記/], ["/privacy", /動画全体・音声は送信せず/]]) {
     const page = await worker.fetch(new Request(`http://localhost${path}`, { headers: { accept: "text/html" } }),
       { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
       { waitUntil() {}, passThroughOnException() {} });
     assert.equal(page.status, 200); assert.match(await page.text(), expected);
   }
+  const oldAccount = await worker.fetch(new Request("http://localhost/account", { headers: { accept: "text/html" } }), { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } }, { waitUntil() {}, passThroughOnException() {} });
+  assert.ok([307, 308].includes(oldAccount.status));
+  assert.equal(new URL(oldAccount.headers.get("location"), "http://localhost").pathname, "/login");
 
   const authSession = await worker.fetch(new Request("http://localhost/auth/session"),
     { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },

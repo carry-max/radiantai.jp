@@ -135,7 +135,7 @@ export async function authForm(request: Request) {
   } finally { reader.releaseLock(); }
 }
 export function accountRedirect(status?: string) {
-  const destination = new URL("/account", authConfig().origin);
+  const destination = new URL("/login", authConfig().origin);
   if (status) destination.searchParams.set("status", status);
   return Response.redirect(destination, 303);
 }
