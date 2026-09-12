@@ -21,17 +21,16 @@ npm start
 
 ## radiantai.jpへの公開
 
-本番用の`Dockerfile`は標準Next.jsのstandalone出力を起動し、`/data`をSQLiteの永続ボリュームとして使います。コンテナ対応ホストでは次の設定を使います。
+本番はVercel、Supabase、Railway PostgreSQLで構成します。具体的な作成順序と環境変数は[DEPLOYMENT.md](./DEPLOYMENT.md)を参照してください。
 
-- 公開ポート：`3000`
-- ヘルスチェック：`/api/health`
-- 永続ボリューム：`/data`
-- SQLite：`SQLITE_PATH=/data/radiant.sqlite`
-- 正式URL：`AUTH_SITE_URL=https://radiantai.jp`、`NEXT_PUBLIC_SITE_URL=https://radiantai.jp`
+- Vercel：Next.jsの画面・API
+- Supabase：Google・Xログイン
+- Railway：PostgreSQLによる永続データ
+- Cloudflare：`radiantai.jp`のDNS
 
-ホストから発行されたドメインまたはIPへ、Cloudflare DNSの`radiantai.jp`と`www`を接続します。DNS接続後、Supabaseの許可済みリダイレクトURLへ`https://radiantai.jp/auth/callback`を追加し、Stripe Webhookを`https://radiantai.jp/api/billing/webhook`へ切り替えます。HTTPSの終端は公開ホストまたはCloudflare側で行います。
+`vercel.json`は東京リージョンを指定し、AI解析Route Handlerは最大60秒で実行します。`DATABASE_URL`にはRailwayが発行する外部接続用`DATABASE_PUBLIC_URL`を設定します。
 
-`radiantai.jp`のDNSは現在Cloudflareで管理されています。公開ホストが未指定のため、DNSレコードと本番シークレットはまだ変更していません。
+`Dockerfile`はVercelを使わない自己ホストや復旧用として残しています。
 
 ## 画面構成
 
@@ -48,9 +47,9 @@ APIはapp/api/、認証はapp/auth/、画面別metadataは各layout.tsxにあり
 
 ## データ保存
 
-Node.js組み込みSQLiteを使用します。SQLITE_PATHに永続ディスク上のファイルを指定してください。未指定なら.data/radiant.sqliteを作成します。初回接続時にdrizzle/の既存マイグレーションをトランザクション内で適用し、適用履歴を記録します。複数SQLのbatchもまとめてコミットし、失敗時はロールバックします。
+本番では`DATABASE_URL`経由でRailway PostgreSQLを使用します。必要なテーブルは初回接続時に安全に作成します。複数SQLのbatchはPostgreSQLトランザクションにまとめ、失敗時はロールバックします。
 
-永続ディスク付きの単一Node.jsホストを前提とします。Vercelなど一時ファイルシステムのサーバーレス環境や、複数ホストへの水平分散では共有データベースへの変更が必要です。DBファイルはGitに含めません。バックアップにはSQLiteの整合性を保つバックアップ手段を使ってください。
+ローカル開発では`DATABASE_URL`が空の場合だけNode.js組み込みSQLiteを使い、`.data/radiant.sqlite`へ保存します。`SQLITE_PATH`で保存場所を変更できます。Vercel上で`DATABASE_URL`が空の場合は、一時SQLiteへ誤保存せずエラーにします。
 
 既存のDrizzleクエリとの互換性のためD1ドライバーのSQL変換部分を利用しますが、Cloudflare WorkerやD1バインディングは起動に不要です。
 
@@ -60,7 +59,7 @@ Node.js組み込みSQLiteを使用します。SQLITE_PATHに永続ディスク�
 
 - Supabase：`NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`、`AUTH_SITE_URL`。Google/Xを有効にし、`https://radiantai.jp/auth/callback`をSupabaseの許可済みリダイレクトURLへ追加します。新しいpublishable keyを使う場合は`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`にも対応しています。
 - AI解析：OPENAI_API_KEYなどのサーバー環境変数。キーをブラウザ公開用の変数にしないでください。
-- 決済：Stripeのキー・Webhookシークレット、販売者情報など既存の条件を設定します。Webhook送信先は新しいホストの/api/billing/webhookです。
+- 決済：Stripeのキー・Webhookシークレット、販売者情報など既存の条件を設定します。Webhook送信先は`https://radiantai.jp/api/billing/webhook`です。
 - 設定がない場合は画面を閲覧できますが、認証や有料機能は利用可能になりません。
 
 標準Next.jsでは、外部リクエストのoai-authenticated-user-*ヘッダーを認証に使用しません。本人確認はSupabaseの検証済みセッションで行います。Sites専用のログインやヘッダーだけによる旧履歴の所有者確認は使えません。
@@ -70,10 +69,10 @@ Node.js組み込みSQLiteを使用します。SQLITE_PATHに永続ディスク�
 GitHubへのpushは公開中のSitesやD1を更新しません。この移行で本番データを自動コピー・削除していません。
 
 1. 書き込みを止めた状態でD1のスキーマ・データをバックアップします。
-2. 隔離したSQLiteへ取り込み、外部キー整合性、件数、auth_accountsと各user_idの対応を検証します。
-3. 既存マイグレーションとの対応を確認してrr_node_migrationsへ適用済みtagを記録します。既存テーブルに初期マイグレーションを再実行しないでください。
+2. 隔離したRailway PostgreSQLへ変換して取り込み、外部キー整合性、件数、auth_accountsと各user_idの対応を検証します。
+3. アプリが作成したPostgreSQLテーブル定義との対応を確認します。利用開始後の本番DBへ未検証データを直接取り込まないでください。
 4. 同じSupabaseプロジェクトを使う場合もアカウント対応を検証します。Sitesのみの旧アカウントは別途本人確認を伴う移行が必要です。
-5. 検証済みDBをSQLITE_PATHに指定して起動し、実際のログイン・保存・決済Webhookを確認してから切り替えます。
+5. 検証済みRailway接続URLをVercelの`DATABASE_URL`に設定し、実際のログイン・保存・決済Webhookを確認してから切り替えます。
 
 このデータ移行と外部サービスの本番設定はまだ実行していません。
 

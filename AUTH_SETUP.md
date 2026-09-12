@@ -1,6 +1,6 @@
 # Radiant Review — Google・Xログインの接続
 
-認証はSupabase Auth、GoogleとXはOAuth 2.0、アプリ側はサーバーだけでセッションを処理する構成です。ミッション・XP・成長記録・契約情報は、標準Next.jsサーバーの永続SQLiteディスクへ保存します。Supabaseのデータベースへ記録を移す必要はありません。
+認証はSupabase Auth、GoogleとXはOAuth 2.0、アプリ側はサーバーだけでセッションを処理する構成です。ミッション・XP・成長記録・契約情報はRailway PostgreSQLへ保存します。Supabaseのデータベースへ記録を移す必要はありません。
 
 ## 1. Supabaseプロジェクト
 
@@ -14,7 +14,7 @@
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon key。新しいpublishable keyは`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`でも設定可能 |
 | `AUTH_SITE_URL` | `https://radiantai.jp` |
 | `NEXT_PUBLIC_SITE_URL` | `https://radiantai.jp` |
-| `SQLITE_PATH` | 永続ディスク上のDBパス。Docker構成では`/data/radiant.sqlite` |
+| `DATABASE_URL` | Railwayの外部接続用`DATABASE_PUBLIC_URL`。VercelではSensitiveとして設定 |
 
 2つのSupabase設定が両方空の間はGoogle・Xボタンが準備中になります。両方を同時に登録してください。片方だけ、無効なキー、接続障害の場合は、認証を安全に停止します。
 
@@ -83,7 +83,7 @@ X DeveloperのアプリでUser authentication settingsを設定します。
 - 同じ本人によるGoogle/Xの連携と旧記録の引き継ぎを確認する。
 - 公開先の設定値変更後は再デプロイしてから実機確認する。
 
-実装ではHTTPOnly・Secure・SameSite=LaxのCookie、PKCE、Supabase AuthへのgetUser検証、アカウントごとのSQLite所有権確認を使います。開始・連携・引き継ぎ・ログアウトは同じサイトからのPOSTだけを受け付けます。認証結果と個人データをキャッシュしません。投稿・DM送信やタイムライン取得の機能は追加していません。
+実装ではHTTPOnly・Secure・SameSite=LaxのCookie、PKCE、Supabase AuthへのgetUser検証、アカウントごとのPostgreSQL所有権確認を使います。開始・連携・引き継ぎ・ログアウトは同じサイトからのPOSTだけを受け付けます。認証結果と個人データをキャッシュしません。投稿・DM送信やタイムライン取得の機能は追加していません。
 
 Supabase・Google・Xの実プロジェクトの登録や設定は未実施です。実アカウントのログインと連携は、設定後に上記の確認が必要です。
 

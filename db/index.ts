@@ -5,7 +5,7 @@ import * as schema from "./schema";
 export function getDb() {
   if (!env.DB) {
     throw new Error(
-      "SQLite is unavailable. Check SQLITE_PATH and the server's filesystem permissions."
+      "Database is unavailable. Check DATABASE_URL or the local SQLite configuration."
     );
   }
 

@@ -1,10 +1,10 @@
-import { getSqliteDatabase } from "@/db/node-sqlite";
+import { getRuntimeDatabase } from "@/db/runtime-database";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    await getSqliteDatabase().prepare("SELECT 1 AS healthy").first();
+    await getRuntimeDatabase().prepare("SELECT 1 AS healthy").first();
     return Response.json({ status: "ok" }, {
       headers: { "Cache-Control": "no-store" },
     });

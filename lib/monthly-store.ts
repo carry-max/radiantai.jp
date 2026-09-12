@@ -22,7 +22,7 @@ export function getMissionDb(): MissionDatabase {
 
 export async function getMonthlySummary(db: MissionDatabase, userId: string, now = Date.now()): Promise<MonthlySummary> {
   const row = await db.prepare("SELECT * FROM monthly_mission_cycles WHERE user_id = ? ORDER BY started_at DESC, id DESC LIMIT 1").bind(userId).first<CycleRow>();
-  const totals = await db.prepare("SELECT COALESCE(SUM(xp), 0) AS xp, COALESCE(SUM(CASE WHEN current_step = 4 THEN 1 ELSE 0 END), 0) AS completed FROM monthly_mission_cycles WHERE user_id = ?").bind(userId).first<{ xp: number; completed: number }>();
+  const totals = await db.prepare("SELECT CAST(COALESCE(SUM(xp), 0) AS INTEGER) AS xp, CAST(COALESCE(SUM(CASE WHEN current_step = 4 THEN 1 ELSE 0 END), 0) AS INTEGER) AS completed FROM monthly_mission_cycles WHERE user_id = ?").bind(userId).first<{ xp: number; completed: number }>();
   let cycle: MonthlyCycle | null = null;
   if (row) {
     const attempts = await db.prepare("SELECT * FROM monthly_mission_reviews WHERE user_id = ? AND cycle_id = ? AND step >= 0 ORDER BY created_at DESC, id DESC").bind(userId, row.id).all<AttemptRow>();

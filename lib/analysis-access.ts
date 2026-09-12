@@ -19,7 +19,7 @@ export function analysisPeriod(entitlement: BillingEntitlement | null, now = Dat
 }
 export async function readAllowance(db: MissionDatabase, userId: string, entitlement: BillingEntitlement | null): Promise<AnalysisAllowance> {
   const period = analysisPeriod(entitlement);
-  const rows = await db.prepare("SELECT recording_id, COUNT(*) AS scenes FROM analysis_records WHERE user_id = ? AND period_key = ? AND status = 'succeeded' GROUP BY recording_id").bind(userId, period.periodKey).all<{ recording_id: string; scenes: number }>();
+  const rows = await db.prepare("SELECT recording_id, CAST(COUNT(*) AS INTEGER) AS scenes FROM analysis_records WHERE user_id = ? AND period_key = ? AND status = 'succeeded' GROUP BY recording_id").bind(userId, period.periodKey).all<{ recording_id: string; scenes: number }>();
   return { ...period, used: rows.results.length, remaining: Math.max(0, period.limit - rows.results.length), scenesPerMatch: SCENES_PER_MATCH, recordings: rows.results.map(row => ({ recordingId: row.recording_id, scenesUsed: row.scenes })) };
 }
 export async function getAnalysisAllowance(userId: string) { return readAllowance(getMissionDb(), userId, await getEntitlement(userId)); }

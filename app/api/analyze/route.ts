@@ -10,6 +10,7 @@ import { saveAiGrowth } from "@/lib/player-growth-store";
 import { AIM_COACH_INSTRUCTIONS, AIM_OUTPUT_LIMIT, analysisSceneKey, validAimSequence, type ReviewMode, type AimCrop } from "@/lib/review-modes";
 
 const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
+export const maxDuration = 60;
 const ALLOWED_MODELS = new Set(["gpt-5.6-luna", "gpt-5.6-sol"]);
 
 const REVIEW_SCHEMA = {
