@@ -100,7 +100,7 @@ export async function saveMonthlyReview(
   } else if (context.mode === "check" && check.status !== "not_applicable") {
     const cleared = check.status === "cleared";
     const reward = cleared ? WEEKLY_XP + (context.step === 3 ? MONTHLY_BONUS_XP : 0) : 0;
-    // Both statements are one D1 transaction. A stale step or repeated recording
+    // Both statements are one database transaction. A stale step or repeated recording
     // cannot insert an award, and only this exact inserted attempt can advance XP.
     await db.batch([
       db.prepare(`INSERT INTO monthly_mission_reviews (id, cycle_id, user_id, recording_id, step, status, confidence, evidence, evidence_times_json, xp, created_at)

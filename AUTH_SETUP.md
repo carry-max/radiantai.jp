@@ -1,35 +1,37 @@
 # Radiant Review — Google・Xログインの接続
 
-認証はSupabase Auth、GoogleとXはOAuth 2.0、アプリ側はサーバーだけでセッションを処理する構成です。ミッション・XP・成長記録・契約情報は現在のSitesのD1を使います。Supabaseのデータベースへ記録を移す必要はありません。
+認証はSupabase Auth、GoogleとXはOAuth 2.0、アプリ側はサーバーだけでセッションを処理する構成です。ミッション・XP・成長記録・契約情報は、標準Next.jsサーバーの永続SQLiteディスクへ保存します。Supabaseのデータベースへ記録を移す必要はありません。
 
 ## 1. Supabaseプロジェクト
 
 自分のSupabaseプロジェクトでProject URLとPublishable keyを確認してください。このアプリにservice_roleキーやsecret keyは不要です。
 
-Sitesのこのサイトの設定へ、以下を登録します。設定値はローカルの例示ファイルではなく、公開先の環境変数に保存してください。
+公開するNode.jsホストへ、以下を環境変数として登録します。設定値はローカルの例示ファイルやGitHubへ保存しないでください。
 
 | 設定名 | 設定する値 |
 | --- | --- |
-| `SUPABASE_URL` | SupabaseのProject URL。例: `https://<project-ref>.supabase.co` |
-| `SUPABASE_PUBLISHABLE_KEY` | Publishable key（`sb_publishable_...`）。旧形式のanonキーにも対応 |
-| `AUTH_SITE_URL` | `https://radiant-review-web.kogq12234.chatgpt.site` |
+| `NEXT_PUBLIC_SUPABASE_URL` | SupabaseのProject URL。例: `https://<project-ref>.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon key。新しいpublishable keyは`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`でも設定可能 |
+| `AUTH_SITE_URL` | `https://radiantai.jp` |
+| `NEXT_PUBLIC_SITE_URL` | `https://radiantai.jp` |
+| `SQLITE_PATH` | 永続ディスク上のDBパス。Docker構成では`/data/radiant.sqlite` |
 
-この2つのSupabase設定が両方空の間は、既存のChatGPT認証が続き、Google・Xボタンは準備中になります。いずれかの値を入れるとSupabase認証へ切り替わるため、両方を同時に登録してください。片方だけ、無効なキー、接続障害では、ChatGPTの識別情報へ自動で戻らず認証を停止します。
+2つのSupabase設定が両方空の間はGoogle・Xボタンが準備中になります。両方を同時に登録してください。片方だけ、無効なキー、接続障害の場合は、認証を安全に停止します。
 
 SupabaseのAuthentication → URL Configuration:
 
 | 項目 | 値 |
 | --- | --- |
-| Site URL | `https://radiant-review-web.kogq12234.chatgpt.site` |
-| Redirect URLs | `https://radiant-review-web.kogq12234.chatgpt.site/auth/callback` |
+| Site URL | `https://radiantai.jp` |
+| Redirect URLs | `https://radiantai.jp/auth/callback` |
 
-本番には完全一致のRedirect URLを登録します。Sitesの公開範囲とSupabaseの認証は別です。現在のサイトは本人限定のため、そのままでは訪問前にChatGPTログインが必要です。Google・Xだけで一般の人が入れる運用にする場合は、アプリの認証テスト後にSitesの公開範囲を変更する必要があります。今回の実装で公開範囲は変更していません。
+本番には完全一致のRedirect URLを登録します。`www.radiantai.jp`も公開する場合は、正規ドメインへリダイレクトするか、対応するCallback URLも追加します。
 
 ## 2. Google
 
 Google Auth PlatformでWeb applicationのOAuthクライアントを作成し、Audience・Branding・Data Accessを設定します。
 
-- 許可するJavaScript origin: `https://radiant-review-web.kogq12234.chatgpt.site`
+- 許可するJavaScript origin: `https://radiantai.jp`
 - Google側のAuthorized redirect URI: SupabaseのGoogle Provider設定画面で表示される `https://<project-ref>.supabase.co/auth/v1/callback`
 - 基本の認証・プロフィールの権限: `openid`、email、profile
 - 作成したClient ID・Client Secretを、Supabase → Authentication → Sign In / Providers → Googleに入力し有効化
@@ -46,9 +48,9 @@ X DeveloperのアプリでUser authentication settingsを設定します。
 - Type of App: Web App
 - Request email from usersを有効化
 - Callback URL: SupabaseのX Provider設定画面にある `https://<project-ref>.supabase.co/auth/v1/callback`
-- Website URL: `https://radiant-review-web.kogq12234.chatgpt.site`
-- Privacy policy URL: `https://radiant-review-web.kogq12234.chatgpt.site/privacy`
-- Terms of service URL: `https://radiant-review-web.kogq12234.chatgpt.site/legal`（公開前に運営者が内容と連絡先を確定）
+- Website URL: `https://radiantai.jp`
+- Privacy policy URL: `https://radiantai.jp/privacy`
+- Terms of service URL: `https://radiantai.jp/legal`（公開前に運営者が内容と連絡先を確定）
 - OAuth 2.0のClient ID・Client Secretを、Supabase → Authentication → Sign In / Providers → **X / Twitter (OAuth 2.0)** に設定し有効化
 
 アプリのprovider識別子は **`x`** です。旧OAuth 1.0aの `twitter` や、そのAPI Key/Secretとは異なります。
@@ -79,9 +81,9 @@ X DeveloperのアプリでUser authentication settingsを設定します。
 - ページ再読み込み、期限切れセッションの更新、キャンセル、ログアウトを確認する。
 - 別タブでアカウントを変更したとき、古いアカウントの画面から記録・購入・解析できないことを確認する。
 - 同じ本人によるGoogle/Xの連携と旧記録の引き継ぎを確認する。
-- Sitesの設定値変更後は、保存した追加版を公開してから実機確認する。
+- 公開先の設定値変更後は再デプロイしてから実機確認する。
 
-実装ではHTTPOnly・Secure・SameSite=LaxのCookie、PKCE、Supabase AuthへのgetUser検証、アカウントごとのD1所有権確認を使います。開始・連携・引き継ぎ・ログアウトは同じサイトからのPOSTだけを受け付けます。認証結果と個人データをキャッシュしません。投稿・DM送信やタイムライン取得の機能は追加していません。
+実装ではHTTPOnly・Secure・SameSite=LaxのCookie、PKCE、Supabase AuthへのgetUser検証、アカウントごとのSQLite所有権確認を使います。開始・連携・引き継ぎ・ログアウトは同じサイトからのPOSTだけを受け付けます。認証結果と個人データをキャッシュしません。投稿・DM送信やタイムライン取得の機能は追加していません。
 
 Supabase・Google・Xの実プロジェクトの登録や設定は未実施です。実アカウントのログインと連携は、設定後に上記の確認が必要です。
 

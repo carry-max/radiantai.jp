@@ -38,6 +38,7 @@ import {
   Wallet,
   Zap,
 } from "lucide-react";
+import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -1112,10 +1113,10 @@ export function AnalysisWorkspace() {
   return (
     <div className="app-shell analysis-page">
       <header className="topbar">
-        <a className="brand" href="/" aria-label="Radiant Review ホーム">
+        <Link className="brand" href="/" aria-label="Radiant Review ホーム">
           <span className="brand-mark" aria-hidden="true"><span /></span>
           <span><strong>RADIANT REVIEW</strong><small>VALORANT VOD COACH</small></span>
-        </a>
+        </Link>
         <div className="top-actions">
           <AccountLink />
           <span className="local-state"><ShieldCheck aria-hidden="true" /> 動画は端末内で処理</span>

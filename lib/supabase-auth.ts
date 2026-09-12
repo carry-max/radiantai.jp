@@ -2,7 +2,15 @@ import { env } from "@/lib/runtime-env";
 import { createServerClient, parseCookieHeader, serializeCookieHeader, type CookieOptions } from "@supabase/ssr";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
-type AuthEnv = { SUPABASE_URL?: string; SUPABASE_PUBLISHABLE_KEY?: string; AUTH_SITE_URL?: string };
+type AuthEnv = {
+  NEXT_PUBLIC_SUPABASE_URL?: string;
+  NEXT_PUBLIC_SUPABASE_ANON_KEY?: string;
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?: string;
+  NEXT_PUBLIC_SITE_URL?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_PUBLISHABLE_KEY?: string;
+  AUTH_SITE_URL?: string;
+};
 const DEFAULT_ORIGIN = "http://localhost:3000";
 export const AUTH_PROVIDERS = ["google", "x"] as const;
 export type AuthProvider = typeof AUTH_PROVIDERS[number];
@@ -12,13 +20,16 @@ export class AuthUnavailable extends Error {
 
 export function authConfig() {
   const values = env as unknown as AuthEnv;
-  const url = values.SUPABASE_URL?.trim() || "";
-  const key = values.SUPABASE_PUBLISHABLE_KEY?.trim() || "";
+  const url = values.NEXT_PUBLIC_SUPABASE_URL?.trim() || values.SUPABASE_URL?.trim() || "";
+  const key = values.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim()
+    || values.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
+    || values.SUPABASE_PUBLISHABLE_KEY?.trim()
+    || "";
   const enabled = env.STANDARD_NEXT_RUNTIME === "true" || Boolean(url || key);
   let origin = DEFAULT_ORIGIN;
   let valid = true;
   try {
-    const site = new URL(values.AUTH_SITE_URL?.trim() || DEFAULT_ORIGIN);
+    const site = new URL(values.AUTH_SITE_URL?.trim() || values.NEXT_PUBLIC_SITE_URL?.trim() || DEFAULT_ORIGIN);
     const local = ["localhost", "127.0.0.1", "[::1]"].includes(site.hostname);
     if (site.username || site.password || site.search || site.hash || site.pathname !== "/" || (site.protocol !== "https:" && !(local && site.protocol === "http:"))) valid = false;
     origin = site.origin;

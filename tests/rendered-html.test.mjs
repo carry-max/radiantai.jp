@@ -3,10 +3,10 @@ import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 
-test("standard Next renders every route and rejects forged Sites identity", {timeout:60000}, async () => {
+test("standard Next renders every route and rejects forged proxy identity", {timeout:60000}, async () => {
   const origin = "http://127.0.0.1:3197";
   const server = spawn(process.execPath, ["node_modules/next/dist/bin/next","start","-H","127.0.0.1","-p","3197"], {
-    env:{...process.env,SUPABASE_URL:"",SUPABASE_PUBLISHABLE_KEY:"",AUTH_SITE_URL:origin},stdio:["ignore","pipe","pipe"]
+    env:{...process.env,NEXT_PUBLIC_SUPABASE_URL:"",NEXT_PUBLIC_SUPABASE_ANON_KEY:"",AUTH_SITE_URL:origin},stdio:["ignore","pipe","pipe"]
   });
   let logs = ""; server.stdout.on("data",c=>logs+=c); server.stderr.on("data",c=>logs+=c);
   try {

@@ -2,6 +2,7 @@
 
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { UserRound } from "lucide-react";
+import Link from "next/link";
 
 export type AccountSnapshot = {
   mode: "supabase" | "chatgpt";
@@ -41,12 +42,12 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   }, []);
   useEffect(() => {
     alive.current = true;
-    void refresh();
+    const initialRefresh = window.setTimeout(() => void refresh(), 0);
     const visible = () => { if (document.visibilityState === "visible") void refresh(); };
     const changed = (event: StorageEvent) => { if (event.key === NOTICE_KEY) void refresh(); };
     document.addEventListener("visibilitychange", visible);
     window.addEventListener("storage", changed);
-    return () => { alive.current = false; generation.current++; document.removeEventListener("visibilitychange", visible); window.removeEventListener("storage", changed); };
+    return () => { window.clearTimeout(initialRefresh); alive.current = false; generation.current++; document.removeEventListener("visibilitychange", visible); window.removeEventListener("storage", changed); };
   }, [refresh]);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
@@ -74,5 +75,5 @@ export function useAccount() {
 }
 export function AccountLink() {
   const { snapshot } = useAccount();
-  return <a className="account-link" href="/login"><UserRound aria-hidden="true" /><span>{snapshot?.user ? "アカウント" : "ログイン"}</span></a>;
+  return <Link className="account-link" href="/login"><UserRound aria-hidden="true" /><span>{snapshot?.user ? "アカウント" : "ログイン"}</span></Link>;
 }

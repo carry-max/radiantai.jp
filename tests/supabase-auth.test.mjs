@@ -252,6 +252,22 @@ test("partial or unsafe configuration fails closed; absent configuration preserv
   assert.equal(current.mode, "chatgpt"); assert.equal(current.user.id, "owner"); assert.equal(current.configured, false);
 });
 
+test("standard Next.js public Supabase variables configure authentication", () => {
+  Object.keys(globalThis.__AUTH_TEST_ENV__).forEach(key => delete globalThis.__AUTH_TEST_ENV__[key]);
+  Object.assign(globalThis.__AUTH_TEST_ENV__, {
+    STANDARD_NEXT_RUNTIME: "true",
+    NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "sb_publishable_unit_test",
+    NEXT_PUBLIC_SITE_URL: origin,
+  });
+  const config = auth.authConfig();
+  assert.equal(config.enabled, true);
+  assert.equal(config.configured, true);
+  assert.equal(config.url, supabaseUrl);
+  assert.equal(config.key, "sb_publishable_unit_test");
+  assert.equal(config.origin, origin);
+});
+
 test("old local reports require explicit import and cannot overwrite another account's data", () => {
   const values = new Map(); const local = { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
   values.set(storage.LEGACY_HISTORY_KEY, JSON.stringify([{ review: "old report" }]));

@@ -58,7 +58,7 @@ Node.js組み込みSQLiteを使用します。SQLITE_PATHに永続ディスク�
 
 .env.exampleを参照し、実際の値を.env.localまたはホスト側で設定します。
 
-- Supabase：SUPABASE_URL、SUPABASE_PUBLISHABLE_KEY、AUTH_SITE_URL。Google/Xを有効にし、AUTH_SITE_URL/auth/callbackをSupabaseの許可済みリダイレクトURLへ追加します。本番ではAUTH_SITE_URLを実際のHTTPS URLに変更します。
+- Supabase：`NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`、`AUTH_SITE_URL`。Google/Xを有効にし、`https://radiantai.jp/auth/callback`をSupabaseの許可済みリダイレクトURLへ追加します。新しいpublishable keyを使う場合は`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`にも対応しています。
 - AI解析：OPENAI_API_KEYなどのサーバー環境変数。キーをブラウザ公開用の変数にしないでください。
 - 決済：Stripeのキー・Webhookシークレット、販売者情報など既存の条件を設定します。Webhook送信先は新しいホストの/api/billing/webhookです。
 - 設定がない場合は画面を閲覧できますが、認証や有料機能は利用可能になりません。
@@ -85,5 +85,3 @@ npm test
 ```
 
 テストは標準Next.jsの本番サーバー起動、主要ルート、認証ヘッダー偽装の拒否、SQLiteの再読込・ロールバック、既存の解析枠・決済・ミッション・アカウント分離を確認します。Viteは既存単体テストでTypeScriptを読み込むためだけに使用します。
-
-worker/、build/、vite.config.ts、.openai/と旧Sitesスクリプトは元の構成の参照用です。標準Next.jsの起動・ビルドには使用しません。

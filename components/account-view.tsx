@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CheckCircle2, ShieldCheck, UserRound } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useAccount } from "@/components/account-provider";
 import { importDeviceHistory } from "@/lib/account-storage";
@@ -28,7 +29,7 @@ export function AccountView() {
     const status = params.get("status") || "";
     if (["signed-in", "imported"].includes(status) && !(snapshot?.mode === "supabase" && snapshot.user)) return;
     if (["signed-out", "signed-out-local"].includes(status) && (!snapshot || snapshot.user)) return;
-    setNotice(messages[status] || "");
+    queueMicrotask(() => setNotice(messages[status] || ""));
   }, [snapshot?.mode, snapshot?.user?.id]);
   const user = snapshot?.user;
   const socialUser = Boolean(user && snapshot?.mode === "supabase");
@@ -46,7 +47,7 @@ export function AccountView() {
     </form>;
   };
   return <main className="account-page">
-    <a className="account-back" href="/">トップへ戻る</a>
+    <Link className="account-back" href="/">トップへ戻る</Link>
     <section className="account-card" aria-labelledby="account-title">
       <span className="account-symbol"><UserRound aria-hidden="true" /></span>
       <p className="eyebrow">RADIANT REVIEW</p>

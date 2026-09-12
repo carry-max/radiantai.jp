@@ -12,13 +12,13 @@ AIM評価は入力の異なる3時刻以上に対応した根拠を要求し、A
 
 ## 接続項目
 
-- OpenAI DevelopersのAPIキースキルで運営用キーを設定し、SitesのシークレットOPENAI_API_KEYに保存する。利用者にキーを配布しない。
+- OpenAI Developersで運営用キーを作成し、Node.jsホストのシークレット`OPENAI_API_KEY`に保存する。利用者にキーを配布しない。
 - Stripeのテスト用キーとWebhookで支払い・確認・更新・更新停止を検証してから本番設定にする。
 - Webhook対象：checkout.session.completed、checkout.session.async_payment_succeeded、customer.subscription.updated、customer.subscription.deleted、invoice.paid。
 - PayPayは利用申請とテストを完了した場合のみPAYPAY_ENABLED=trueにする。
 - MERCHANT_NAME、MERCHANT_REPRESENTATIVE、MERCHANT_ADDRESS、MERCHANT_PHONE、SUPPORT_EMAILを運営者本人の正しい情報で設定する。
 - Riot Developer Portalへの登録と収益化条件を確認し、承認状態がApprovedまたはAcknowledgedであることを確認してからRIOT_PRODUCT_APPROVED=trueにする。非公式表記は承認の代わりにはならない。
-- 一般公開はSitesのアクセス変更が別途必要。現在の所有者限定公開は自動で変更しない。
+- `radiantai.jp`をNode.jsホストへ接続し、HTTPS、永続ディスク、`/api/health`の監視を有効にする。
 
 無料体験はログインしたアカウントごとに1試合。通常解析は1ユーザーにつき同時1件、1日12回（失敗・保留も含む、日本時間）、全体は既定1日200回です。REVIEW_DAILY_LIMITで全体上限を設定します。上限は費用の保証額ではないため、OpenAI側の支出管理も設定してください。
 
