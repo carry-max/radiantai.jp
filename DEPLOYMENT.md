@@ -1,69 +1,79 @@
-# radiantai.jp：Vercel + Supabase + Railway
+# radiantai.jp：Vercel + Railway + Supabase
 
-## 構成
+## 分担
 
-- Vercel：Next.js App Routerの画面とRoute Handlerを公開
-- Supabase：Google・XのOAuth認証とセッション検証
-- Railway：全利用者のミッション、XP、成長記録、解析枠、決済状態を保存するPostgreSQL
-- Cloudflare DNS：`radiantai.jp`と`www.radiantai.jp`をVercelへ接続
+- **Vercel**：Next.js App Routerの画面、ログイン入口、ダッシュボード、解析開始、結果表示、決済API
+- **Railway**：動画解析API、FFmpegフレーム抽出、OpenAI呼び出し、長時間ジョブ、バックグラウンド処理
+- **Supabase**：ユーザー、Authentication、唯一のPostgreSQL、必要な場合のStorage
+- **Cloudflare DNS**：`radiantai.jp`と`www.radiantai.jp`をVercelへ接続
 
-Vercelのファイルシステムには利用者データを保存しません。`DATABASE_URL`がある場合はRailway PostgreSQLを使います。ローカル開発で`DATABASE_URL`が空の場合だけSQLiteを使います。
+利用者・解析枠・成長記録・ミッション・契約・解析ジョブはすべてSupabase PostgreSQLへ保存します。Railwayに別のデータベースは作りません。ローカル開発で`SUPABASE_DATABASE_URL`が空の場合だけSQLiteを使います。
 
-## 1. Railway
+## 1. Supabase
 
-1. RailwayプロジェクトでPostgreSQLサービスを追加します。
-2. PostgreSQLサービスのSettings → NetworkingでPublic Accessを追加します。
-3. Variablesに作成される`DATABASE_PUBLIC_URL`を確認します。
-4. URLにSSL指定がない場合は末尾へ`?sslmode=require`を追加します。すでにクエリがある場合は`&sslmode=require`です。
-5. この値をVercelの`DATABASE_URL`へSensitiveとして登録します。値をGitHubや`NEXT_PUBLIC_*`へ入れないでください。
-
-初回の`/api/health`アクセス時に必要なテーブルとインデックスをトランザクション内で作成します。複数のVercel Functionが同時起動しても、PostgreSQLのadvisory lockで初期化を直列化します。
-
-## 2. Supabase
-
-Supabase Authentication → URL Configurationへ次を登録します。
+Authentication → URL Configurationへ次を登録します。
 
 | 項目 | 値 |
 | --- | --- |
 | Site URL | `https://radiantai.jp` |
 | Redirect URL | `https://radiantai.jp/auth/callback` |
 
-GoogleとX（OAuth 2.0）のProviderを有効化します。各Provider側のCallback URLには、Supabase画面に表示される`https://<project-ref>.supabase.co/auth/v1/callback`を使います。
+Database → Connectで、サーバーレス接続に対応したPooler URLを取得します。VercelとRailwayの`SUPABASE_DATABASE_URL`へSensitiveとして登録し、GitHubや`NEXT_PUBLIC_*`へは入れません。
+
+GoogleとX（OAuth 2.0）のProviderは、各Provider側のClient ID・Secretを用意してから有効化します。Callback URLはSupabase画面に表示される`https://<project-ref>.supabase.co/auth/v1/callback`です。
+
+動画をサーバー処理する場合だけStorageに非公開bucketを作り、短時間のsigned URLをRailwayへ渡します。公開bucketや恒久URLは使いません。
+
+## 2. Railway動画解析サービス
+
+GitHubの同じリポジトリからサービスを作り、Root Directoryを`services/video-analysis`にします。DockerfileにはFFmpegが含まれます。
+
+Railwayへ次を登録します。
+
+| 変数 | 公開範囲 | 用途 |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | Secret | 運営用AIキー |
+| `VIDEO_ANALYSIS_BACKEND_TOKEN` | Secret | Vercelとの共有トークン |
+| `SUPABASE_DATABASE_URL` | Secret | Supabase Pooler URL。バックグラウンドジョブ保存用 |
+| `SUPABASE_STORAGE_HOST` | Server | 例：`<project-ref>.supabase.co`。FFmpeg入力URLの送信先制限 |
+
+公開ドメインを1つ発行します。`/health`は認証不要、`/v1/analyze`、`/v1/frames`、`/v1/jobs`は共有トークンが必要です。
+
+- `/v1/analyze`：Vercelが作成した画像解析リクエストをOpenAIへ送る
+- `/v1/frames`：Supabase Storageの短時間signed URLからFFmpegで2〜6枚を抽出
+- `/v1/jobs`：長時間解析をSupabase DBへ登録し、バックグラウンド実行
+- `/v1/jobs/:id`：ジョブ状態と結果を取得
+
+利用者が自分で入力したOpenAIキーはRailwayへ送りません。その場合だけVercelからOpenAIへ直接送ります。
 
 ## 3. Vercel
 
-GitHubの`carry-max/radiantai.jp`を新しいVercel ProjectとしてImportし、Framework PresetをNext.js、Production Branchを`main`にします。Root Directoryはリポジトリ直下です。
-
-Productionへ次の変数を登録します。秘密値はSensitiveにします。Preview環境を有効にする場合は、本番とは別のRailway PostgreSQLとStripeテストキーを使います。
+GitHubの`carry-max/radiantai.jp`をImportし、Framework PresetをNext.js、Production Branchを`main`、Root Directoryをリポジトリ直下にします。
 
 | 変数 | 公開範囲 | 値・用途 |
 | --- | --- | --- |
-| `DATABASE_URL` | Sensitive | Railwayの`DATABASE_PUBLIC_URL` |
+| `SUPABASE_DATABASE_URL` | Sensitive | Supabase Pooler URL |
 | `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase Project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Supabase anon key。新形式は`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`も可 |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public | Supabase publishable key |
 | `AUTH_SITE_URL` | Server | `https://radiantai.jp` |
 | `NEXT_PUBLIC_SITE_URL` | Public | `https://radiantai.jp` |
-| `OPENAI_API_KEY` | Sensitive | 運営用OpenAI APIキー |
+| `VIDEO_ANALYSIS_BACKEND_URL` | Server | Railway動画解析サービスのHTTPS URL |
+| `VIDEO_ANALYSIS_BACKEND_TOKEN` | Sensitive | Railwayと同じ共有トークン |
 | `OPENAI_REVIEW_MODEL` | Server | `gpt-5.6-luna` |
 | `REVIEW_DAILY_LIMIT` | Server | `200`から開始 |
 | `STRIPE_SECRET_KEY` | Sensitive | Stripe本番Secret key |
-| `STRIPE_WEBHOOK_SECRET` | Sensitive | `https://radiantai.jp/api/billing/webhook`のSigning secret |
-| `PAYPAY_ENABLED` | Server | StripeでPayPay利用確認後に`true` |
+| `STRIPE_WEBHOOK_SECRET` | Sensitive | Billing Webhook Signing secret |
+| `PAYPAY_ENABLED` | Server | 利用確認後に`true` |
 | `RIOT_PRODUCT_APPROVED` | Server | Riotの承認確認後に`true` |
-| `MERCHANT_NAME` | Server | 特定商取引法表示の事業者名 |
-| `MERCHANT_REPRESENTATIVE` | Server | 代表者名 |
-| `MERCHANT_ADDRESS` | Server | 所在地 |
-| `MERCHANT_PHONE` | Server | 電話番号 |
-| `SUPPORT_EMAIL` | Server | 問い合わせ先 |
+| `MERCHANT_*`、`SUPPORT_EMAIL` | Server | 特定商取引法表示の実情報 |
 
-環境変数を変更した後は再デプロイします。`NEXT_PUBLIC_*`はビルド時に画面へ組み込まれるため、変数の追加だけでは既存デプロイへ反映されません。
+運営用`OPENAI_API_KEY`はRailwayだけへ置き、Vercelへ重複保存しません。環境変数を変更した後は再デプロイします。
 
-## 4. ドメイン
+## 4. 公開確認
 
-Vercel Projectへ`radiantai.jp`と`www.radiantai.jp`を追加し、Vercelが表示するDNSレコードをCloudflareへ設定します。`www`は`radiantai.jp`へ転送します。DNSが有効になった後、次を確認します。
-
-1. `https://radiantai.jp/api/health`が`{"status":"ok"}`を返す。
-2. GoogleとXでログインし、再読み込み後もログイン状態が続く。
-3. 成長記録を保存し、別ブラウザでも同じアカウントから読める。
-4. OpenAI解析を1件行い、解析枠と成長グラフが更新される。
-5. Stripeテストモードで購入、Webhook、更新停止を確認してから本番キーへ切り替える。
+1. Railwayの`/health`が`status: ok`を返す。
+2. Vercelの`/api/health`がSupabase DBへ接続して`status: ok`を返す。
+3. Google/Xログイン後、再読み込みしてもセッションが続く。
+4. 解析結果、解析枠、ミッション、成長グラフが同じSupabase DBへ保存される。
+5. FFmpeg抽出、同期解析、長時間ジョブをそれぞれ確認する。
+6. Stripeテストモードで購入、Webhook、更新停止を確認してから本番へ切り替える。

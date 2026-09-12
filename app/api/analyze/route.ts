@@ -8,6 +8,7 @@ import { z } from "zod";
 import { SKILL_ASSESSMENT_SCHEMA, SKILL_ASSESSMENT_INSTRUCTIONS, verifiedSkillRatings } from "@/lib/player-growth";
 import { saveAiGrowth } from "@/lib/player-growth-store";
 import { AIM_COACH_INSTRUCTIONS, AIM_OUTPUT_LIMIT, analysisSceneKey, validAimSequence, type ReviewMode, type AimCrop } from "@/lib/review-modes";
+import { requestVideoAnalysis } from "@/lib/video-analysis-client";
 
 const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
 export const maxDuration = 60;
@@ -256,7 +257,8 @@ async function postHandler(request: Request) {
     const personalKey = cleanText(body.apiKey, 300);
     const apiKey = personalKey || config.apiKey;
     const model = personalKey ? cleanText(body.model, 60) || "gpt-5.6-luna" : config.model;
-    if (!apiKey) return json({ ok: false, error: "AIレビューは現在準備中です。録画の切り出しとサンプルレビューをご利用いただけます。" }, 503);
+    const backendConfigured = Boolean(config.videoBackendUrl && config.videoBackendToken);
+    if (!apiKey && !backendConfigured) return json({ ok: false, error: "AIレビューは現在準備中です。録画の切り出しとサンプルレビューをご利用いただけます。" }, 503);
     if (!ALLOWED_MODELS.has(model)) throw new RequestError("選択されたモデルは利用できません。");
     const frames = cleanFrames(body.frames);
     if (mode === "aim" && !validAimSequence(frames.map(frame => frame.time), body.deathTimestamp)) throw new RequestError("AIMは基準時刻の前後0.4秒・6枚で解析します。AIMモードで切り出し直してください。");
@@ -318,13 +320,7 @@ async function postHandler(request: Request) {
       content.push({ type: "input_image", image_url: frame.dataUrl, detail: "low" });
     }
 
-    const upstream = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    const upstreamPayload = {
         model,
         instructions: (mode === "aim" ? AIM_COACH_INSTRUCTIONS : COACH_INSTRUCTIONS) + (monthlyTask ? "\n前回ミッションはmission_check、月間ミッションはmonthly_checkで独立に判定してください。monthly_checkにも同じ厳密な映像根拠・秒数・high確信度の条件を適用します。月間の課題と達成条件を前回ミッションで置き換えないでください。" : "") + (createMonthlyPlan ? `\n今回は30日間のミッションを作ります。monthly_planを必ず4項目で出してください。
 今回の反省点をもとに、第1週は基本の修正、第2週は別の試合で再現、第3週は関連した判断へ応用、第4週は今月の重点を再確認する流れにしてください。
@@ -343,8 +339,14 @@ async function postHandler(request: Request) {
             schema,
           },
         },
-      }),
-      signal: AbortSignal.timeout(90_000),
+      };
+    const upstream = await requestVideoAnalysis({
+      apiKey,
+      backendUrl: config.videoBackendUrl,
+      backendToken: config.videoBackendToken,
+      payload: upstreamPayload,
+      // Personal API keys stay on Vercel. Paid/site-funded analysis runs on Railway.
+      useBackend: !personalKey,
     });
 
     const upstreamBody = await upstream.json() as Record<string, unknown>;
@@ -413,7 +415,8 @@ async function postHandler(request: Request) {
 
 async function getHandler(request: Request) {
   const user = await getSiteUser(request);
-  const configured = Boolean(serviceConfig().apiKey);
+  const config = serviceConfig();
+  const configured = Boolean(config.apiKey || (config.videoBackendUrl && config.videoBackendToken));
   try {
     return json({ configured, signedIn: Boolean(user), allowance: user ? await getAnalysisAllowance(user.id) : null });
   } catch {

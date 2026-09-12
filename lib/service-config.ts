@@ -2,6 +2,7 @@ import { env } from "@/lib/runtime-env";
 
 type ServiceEnv = {
   OPENAI_API_KEY?: string; OPENAI_REVIEW_MODEL?: string; REVIEW_DAILY_LIMIT?: string;
+  VIDEO_ANALYSIS_BACKEND_URL?: string; VIDEO_ANALYSIS_BACKEND_TOKEN?: string;
   PAYPAY_ENABLED?: string; RIOT_PRODUCT_APPROVED?: string;
   MERCHANT_NAME?: string; MERCHANT_REPRESENTATIVE?: string; MERCHANT_ADDRESS?: string;
   MERCHANT_PHONE?: string; SUPPORT_EMAIL?: string;
@@ -13,6 +14,8 @@ export function serviceConfig() {
   return {
     apiKey: values.OPENAI_API_KEY?.trim() || "",
     model: values.OPENAI_REVIEW_MODEL?.trim() || "gpt-5.6-luna",
+    videoBackendUrl: values.VIDEO_ANALYSIS_BACKEND_URL?.trim().replace(/\/$/, "") || "",
+    videoBackendToken: values.VIDEO_ANALYSIS_BACKEND_TOKEN?.trim() || "",
     dailyLimit: Number.isInteger(dailyLimit) && dailyLimit > 0 ? Math.min(dailyLimit, 10000) : 200,
     paypayEnabled: values.PAYPAY_ENABLED === "true", riotApproved: values.RIOT_PRODUCT_APPROVED === "true",
     merchant: {

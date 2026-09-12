@@ -18,7 +18,7 @@ AIM評価は入力の異なる3時刻以上に対応した根拠を要求し、A
 - PayPayは利用申請とテストを完了した場合のみPAYPAY_ENABLED=trueにする。
 - MERCHANT_NAME、MERCHANT_REPRESENTATIVE、MERCHANT_ADDRESS、MERCHANT_PHONE、SUPPORT_EMAILを運営者本人の正しい情報で設定する。
 - Riot Developer Portalへの登録と収益化条件を確認し、承認状態がApprovedまたはAcknowledgedであることを確認してからRIOT_PRODUCT_APPROVED=trueにする。非公式表記は承認の代わりにはならない。
-- `radiantai.jp`をVercelへ接続し、Railway PostgreSQLの`DATABASE_PUBLIC_URL`をVercelの`DATABASE_URL`へ登録して、`/api/health`を確認する。
+- `radiantai.jp`をVercelへ接続し、Supabase Pooler URLをVercelの`SUPABASE_DATABASE_URL`へ登録する。Railwayは動画解析サービスだけを配置し、両方の`/health`を確認する。
 
 無料体験はログインしたアカウントごとに1試合。通常解析は1ユーザーにつき同時1件、1日12回（失敗・保留も含む、日本時間）、全体は既定1日200回です。REVIEW_DAILY_LIMITで全体上限を設定します。上限は費用の保証額ではないため、OpenAI側の支出管理も設定してください。
 

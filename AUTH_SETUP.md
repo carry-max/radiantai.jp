@@ -1,6 +1,6 @@
 # Radiant Review — Google・Xログインの接続
 
-認証はSupabase Auth、GoogleとXはOAuth 2.0、アプリ側はサーバーだけでセッションを処理する構成です。ミッション・XP・成長記録・契約情報はRailway PostgreSQLへ保存します。Supabaseのデータベースへ記録を移す必要はありません。
+認証はSupabase Auth、GoogleとXはOAuth 2.0、アプリ側はサーバーだけでセッションを処理する構成です。ミッション・XP・成長記録・契約情報もSupabase PostgreSQLへ統一します。
 
 ## 1. Supabaseプロジェクト
 
@@ -14,7 +14,7 @@
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon key。新しいpublishable keyは`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`でも設定可能 |
 | `AUTH_SITE_URL` | `https://radiantai.jp` |
 | `NEXT_PUBLIC_SITE_URL` | `https://radiantai.jp` |
-| `DATABASE_URL` | Railwayの外部接続用`DATABASE_PUBLIC_URL`。VercelではSensitiveとして設定 |
+| `SUPABASE_DATABASE_URL` | SupabaseのPooler URL。VercelではSensitiveとして設定 |
 
 2つのSupabase設定が両方空の間はGoogle・Xボタンが準備中になります。両方を同時に登録してください。片方だけ、無効なキー、接続障害の場合は、認証を安全に停止します。
 

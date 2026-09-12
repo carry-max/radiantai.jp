@@ -116,7 +116,12 @@ test("feedback cannot modify another user's review", async () => {
 
 test("hosted analysis uses the service key, caches success, and rejects unsupported evidence without charging", async () => {
   const db = database();
-  Object.assign(globalThis.__ANALYSIS_TEST_ENV__, { DB: db, OPENAI_API_KEY: "test-server-key" });
+  Object.assign(globalThis.__ANALYSIS_TEST_ENV__, {
+    DB: db,
+    OPENAI_API_KEY: "test-server-key",
+    VIDEO_ANALYSIS_BACKEND_URL: "https://worker.test/",
+    VIDEO_ANALYSIS_BACKEND_TOKEN: "test-worker-token",
+  });
   const originalFetch = globalThis.fetch;
   let upstreamCalls = 0;
   let evidenceTime = 10;
@@ -128,9 +133,9 @@ test("hosted analysis uses the service key, caches success, and rejects unsuppor
   }));
   globalThis.fetch = async (url, options) => {
     upstreamCalls++;
-    assert.equal(url, "https://api.openai.com/v1/responses");
-    assert.equal(options.headers.Authorization, "Bearer test-server-key");
-    assert.equal(JSON.parse(options.body).store, false);
+    assert.equal(url, "https://worker.test/v1/analyze");
+    assert.equal(options.headers.Authorization, "Bearer test-worker-token");
+    assert.equal(JSON.parse(options.body).request.store, false);
     if (failUpstream) return Response.json({ error: { message: "private provider error" } }, { status: 429 });
     return Response.json({ usage: { input_tokens: 123 }, output_text: JSON.stringify({
       status: "ok", headline: "遮蔽を使う", observed: ["射線に出ている"],
@@ -160,7 +165,14 @@ test("hosted analysis uses the service key, caches success, and rejects unsuppor
     assert.equal((await access.readAllowance(db, "owner", null)).recordings[0].scenesUsed, 1);
     const record = db.sqlite.prepare("SELECT result_json, usage_json FROM analysis_records WHERE status = 'succeeded'").get();
     assert.equal(JSON.parse(record.usage_json).input_tokens, 123); assert.doesNotMatch(record.result_json, /data:image|test-server-key/);
-  } finally { globalThis.fetch = originalFetch; delete globalThis.__ANALYSIS_TEST_ENV__.DB; delete globalThis.__ANALYSIS_TEST_ENV__.OPENAI_API_KEY; db.sqlite.close(); }
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete globalThis.__ANALYSIS_TEST_ENV__.DB;
+    delete globalThis.__ANALYSIS_TEST_ENV__.OPENAI_API_KEY;
+    delete globalThis.__ANALYSIS_TEST_ENV__.VIDEO_ANALYSIS_BACKEND_URL;
+    delete globalThis.__ANALYSIS_TEST_ENV__.VIDEO_ANALYSIS_BACKEND_TOKEN;
+    db.sqlite.close();
+  }
 });
 
 test("malformed analysis and feedback bodies return a client error", async () => {

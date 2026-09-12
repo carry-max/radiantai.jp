@@ -21,14 +21,14 @@ npm start
 
 ## radiantai.jpへの公開
 
-本番はVercel、Supabase、Railway PostgreSQLで構成します。具体的な作成順序と環境変数は[DEPLOYMENT.md](./DEPLOYMENT.md)を参照してください。
+本番はVercel、Railway動画解析サービス、Supabaseで構成します。具体的な作成順序と環境変数は[DEPLOYMENT.md](./DEPLOYMENT.md)を参照してください。
 
 - Vercel：Next.jsの画面・API
-- Supabase：Google・Xログイン
-- Railway：PostgreSQLによる永続データ
+- Railway：動画解析API、FFmpeg、AI呼び出し、長時間ジョブ
+- Supabase：Google・Xログイン、唯一のPostgreSQL、必要時のStorage
 - Cloudflare：`radiantai.jp`のDNS
 
-`vercel.json`は東京リージョンを指定し、AI解析Route Handlerは最大60秒で実行します。`DATABASE_URL`にはRailwayが発行する外部接続用`DATABASE_PUBLIC_URL`を設定します。
+`vercel.json`は東京リージョンを指定します。運営用AI解析はVercelからRailwayへ渡し、RailwayがOpenAIを呼び出します。
 
 `Dockerfile`はVercelを使わない自己ホストや復旧用として残しています。
 
@@ -47,9 +47,9 @@ APIはapp/api/、認証はapp/auth/、画面別metadataは各layout.tsxにあり
 
 ## データ保存
 
-本番では`DATABASE_URL`経由でRailway PostgreSQLを使用します。必要なテーブルは初回接続時に安全に作成します。複数SQLのbatchはPostgreSQLトランザクションにまとめ、失敗時はロールバックします。
+本番では`SUPABASE_DATABASE_URL`経由でSupabase PostgreSQLを使用します。必要なテーブルは初回接続時に安全に作成します。複数SQLのbatchはPostgreSQLトランザクションにまとめ、失敗時はロールバックします。
 
-ローカル開発では`DATABASE_URL`が空の場合だけNode.js組み込みSQLiteを使い、`.data/radiant.sqlite`へ保存します。`SQLITE_PATH`で保存場所を変更できます。Vercel上で`DATABASE_URL`が空の場合は、一時SQLiteへ誤保存せずエラーにします。
+ローカル開発では`SUPABASE_DATABASE_URL`が空の場合だけNode.js組み込みSQLiteを使い、`.data/radiant.sqlite`へ保存します。`SQLITE_PATH`で保存場所を変更できます。Vercel上でSupabase DBが未設定の場合はエラーにします。
 
 既存のDrizzleクエリとの互換性のためD1ドライバーのSQL変換部分を利用しますが、Cloudflare WorkerやD1バインディングは起動に不要です。
 
@@ -58,7 +58,7 @@ APIはapp/api/、認証はapp/auth/、画面別metadataは各layout.tsxにあり
 .env.exampleを参照し、実際の値を.env.localまたはホスト側で設定します。
 
 - Supabase：`NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`、`AUTH_SITE_URL`。Google/Xを有効にし、`https://radiantai.jp/auth/callback`をSupabaseの許可済みリダイレクトURLへ追加します。新しいpublishable keyを使う場合は`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`にも対応しています。
-- AI解析：OPENAI_API_KEYなどのサーバー環境変数。キーをブラウザ公開用の変数にしないでください。
+- AI解析：Railwayへ`OPENAI_API_KEY`、両サービスへ同じ`VIDEO_ANALYSIS_BACKEND_TOKEN`を設定します。キーをブラウザ公開用の変数にしないでください。
 - 決済：Stripeのキー・Webhookシークレット、販売者情報など既存の条件を設定します。Webhook送信先は`https://radiantai.jp/api/billing/webhook`です。
 - 設定がない場合は画面を閲覧できますが、認証や有料機能は利用可能になりません。
 
@@ -69,10 +69,10 @@ APIはapp/api/、認証はapp/auth/、画面別metadataは各layout.tsxにあり
 GitHubへのpushは公開中のSitesやD1を更新しません。この移行で本番データを自動コピー・削除していません。
 
 1. 書き込みを止めた状態でD1のスキーマ・データをバックアップします。
-2. 隔離したRailway PostgreSQLへ変換して取り込み、外部キー整合性、件数、auth_accountsと各user_idの対応を検証します。
+2. 隔離したSupabase PostgreSQLへ変換して取り込み、外部キー整合性、件数、auth_accountsと各user_idの対応を検証します。
 3. アプリが作成したPostgreSQLテーブル定義との対応を確認します。利用開始後の本番DBへ未検証データを直接取り込まないでください。
 4. 同じSupabaseプロジェクトを使う場合もアカウント対応を検証します。Sitesのみの旧アカウントは別途本人確認を伴う移行が必要です。
-5. 検証済みRailway接続URLをVercelの`DATABASE_URL`に設定し、実際のログイン・保存・決済Webhookを確認してから切り替えます。
+5. 検証済みSupabase Pooler URLをVercelの`SUPABASE_DATABASE_URL`に設定し、実際のログイン・保存・決済Webhookを確認してから切り替えます。
 
 このデータ移行と外部サービスの本番設定はまだ実行していません。
 
