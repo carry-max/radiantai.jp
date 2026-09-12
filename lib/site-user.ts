@@ -1,6 +1,7 @@
 import { authConfig, authResponse, AuthUnavailable, verifiedSupabaseUser } from "@/lib/supabase-auth";
 import { authSubject, pinAccount, resolveAccount } from "@/lib/auth-accounts";
 import { getMissionDb } from "@/lib/monthly-store";
+import { env } from "@/lib/runtime-env";
 
 export type SiteUser = {
   id: string;
@@ -8,6 +9,7 @@ export type SiteUser = {
 };
 
 export function getLegacySiteUser(request: Request): SiteUser | null {
+  if (env.STANDARD_NEXT_RUNTIME === "true") return null;
   const id = request.headers.get("oai-authenticated-user-id")?.trim() || "";
   const email = request.headers.get("oai-authenticated-user-email")?.trim() || "";
   if (!id) return null;

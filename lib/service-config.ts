@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/runtime-env";
 
 type ServiceEnv = {
   OPENAI_API_KEY?: string; OPENAI_REVIEW_MODEL?: string; REVIEW_DAILY_LIMIT?: string;

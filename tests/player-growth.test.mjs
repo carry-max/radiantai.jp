@@ -8,7 +8,7 @@ import { createServer } from "vite";
 globalThis.__GROWTH_TEST_ENV__ = {};
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ configFile: false, root, appType: "custom", resolve: { alias: { "@": root } },
-  plugins: [{ name: "growth-test-env", resolveId(id) { if (id === "cloudflare:workers") return "\0growth-env"; }, load(id) { if (id === "\0growth-env") return "export const env = globalThis.__GROWTH_TEST_ENV__"; } }], server: { middlewareMode: true, hmr: false } });
+  plugins: [{ name: "growth-test-env", resolveId(id) { if (id === "@/lib/runtime-env" || id.replaceAll("\\", "/").match(/\/lib\/runtime-env(?:\.ts)?$/)) return "\0growth-env"; }, load(id) { if (id === "\0growth-env" || id.replaceAll("\\","/").endsWith("/lib/runtime-env.ts")) return "export const env = globalThis.__GROWTH_TEST_ENV__"; } }], server: { middlewareMode: true, hmr: false } });
 after(async () => { await vite.close(); delete globalThis.__GROWTH_TEST_ENV__; });
 const logic = await vite.ssrLoadModule("/lib/player-growth.ts");
 const store = await vite.ssrLoadModule("/lib/player-growth-store.ts");

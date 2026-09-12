@@ -1,117 +1,75 @@
 # Radiant Review / VALORANT
 
-VALORANTの録画から場面を切り出し、立ち回り・AIMのレビューと成長記録を扱うアプリです。
+VALORANT録画から場面を切り出し、立ち回り・AIMをレビューする標準Next.js App Routerアプリです。既存の画面構造とCSSを維持しています。
 
-## 現在の構成
+## 起動
 
-画面をNext.js App Routerの`app/`構成に分離しています。実行・ビルドは[Vinext](https://github.com/cloudflare/vinext)とCloudflare Workersを使用しています。標準Next.jsランタイムへの移行や、Vercelへの対応が完了した構成ではありません。
+Node.js 24 LTSを推奨します（最低22.16.0）。Windows、macOS、LinuxのNode.jsサーバーで実行できます。
 
-| URL | ページ | 操作を担当するClient Component |
-| --- | --- | --- |
-| `/` | `app/page.tsx` | 共通ヘッダー |
-| `/login` | `app/login/page.tsx` | `components/account-view.tsx` |
-| `/dashboard` | `app/dashboard/page.tsx` | `components/dashboard-view.tsx` |
-| `/analysis` | `app/analysis/page.tsx` | `components/analysis-workspace.tsx` |
-| `/pricing` | `app/pricing/page.tsx` | `components/pricing-view.tsx` |
-| `/account` | `app/account/page.tsx` | `/login`へリダイレクト |
-
-各ページはServer Componentで、フォーム・動画操作・グラフなどの状態管理はClient Componentに配置しています。画面別metadataは各ルートの`layout.tsx`、共通スタイルは`app/globals.css`と`app/portal.css`にあります。APIは`app/api/`、認証処理は`app/auth/`に配置しています。
-
-## 開発と引き継ぎ
-
-- 必要な環境変数は`.env.example`を参照してください。実際の値はGitに追加せず、ローカル環境またはホスティング側で設定します。
-- APIは`cloudflare:workers`とD1などの実行時バインディングに依存します。通常のNode.jsだけで起動する場合は、この依存部分の移植が必要です。
-- `npm run dev`、`npm run build`、`npm test`などの既存スクリプトは下記のLinux環境を前提とします。
-- GitHubへのpushとSitesへのデプロイは別の操作です。GitHubに保存しただけでは公開中のサイトは更新されません。
-
-以下は既存のSites実行・運用手順です。
-
-## Prerequisites
-
-- Node.js `>=22.13.0`
-- Linux with `flock`, `curl`, and GNU `timeout`
-
-## Sites Lifecycle
-
-The Sites lifecycle CLI runs the locked dependency install before returning this checkout. Edit the source under `app/`, then checkpoint when a coherent milestone is ready to inspect or share. The remote Sites builder runs `npm run build` against the pushed commit. Do not repeat install or build as a normal pre-checkpoint step.
-
-This starter does not use `wrangler.jsonc`.
-
-`install:ci` is intentionally a single, non-retrying `npm ci`. It refuses a concurrent install for the same project, consumes a matching image-seeded npm cache with `--prefer-offline` while retaining registry fallback for a missing cache object, otherwise downloads and verifies the complete vinext tarball recorded in `package-lock.json`, limits npm to one socket, and terminates a stalled install. `build` applies a short timeout. These helpers target Linux and use GNU `timeout`; they are not native macOS scripts.
-
-Scripts that need writable project-scoped home, npm, XDG, and temporary paths use `scripts/sites-env.sh`. The `dev` and `start` scripts honor the caller's runtime environment and keep Wrangler logs inside the checkout. The generated `.sites-runtime/` directory is disposable and ignored by Git.
-
-## Included Shape
-
-- edit site code under `app/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from `oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive `oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty `name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by `oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```sh
+npm ci
+# .env.exampleを.env.localへコピーして必要な値を設定
+npm run dev
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+開発URLは http://localhost:3000 です。本番起動は次の順序です。
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs optional or required ChatGPT sign-in:
+```sh
+npm run build
+npm start
+```
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send anonymous visitors through Sign in with ChatGPT.
-- In a Server Component, start sign-in with `<a href={chatGPTSignInPath(returnTo)} target="_top">`. The auth helper module is server-only; do not import it into a Client Component.
-- Do not use `fetch`, XHR, a client-side router, or a framework link that can prefetch the sign-in route. SIWC must start as a top-level navigation.
-- Never request the AuthAPI authorization endpoint directly. The dispatch-owned `/signin-with-chatgpt` route must start the SIWC flow.
-- Use `chatGPTSignOutPath(returnTo)` for browser sign-out links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because they depend on per-request identity headers.
+## 画面構成
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the OAuth cookies, and identity header injection. Do not implement app routes for those reserved paths. Routes that do not import and call the helper remain anonymous-compatible.
+| URL | Server Component | Client Component |
+| --- | --- | --- |
+| / | app/page.tsx | 共通ヘッダー |
+| /login | app/login/page.tsx | components/account-view.tsx |
+| /dashboard | app/dashboard/page.tsx | components/dashboard-view.tsx |
+| /analysis | app/analysis/page.tsx | components/analysis-workspace.tsx |
+| /pricing | app/pricing/page.tsx | components/pricing-view.tsx |
+| /account | app/account/page.tsx | /loginへ転送 |
 
-SIWC establishes identity only; it does not prove workspace membership. Use the Sites hosting platform's access policy controls for workspace-wide restrictions, or enforce explicit server-side membership or allowlist checks.
+APIはapp/api/、認証はapp/auth/、画面別metadataは各layout.tsxにあります。
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write actions tied to the current ChatGPT user. Leave public content anonymous.
+## データ保存
 
-## Diagnostic Commands
+Node.js組み込みSQLiteを使用します。SQLITE_PATHに永続ディスク上のファイルを指定してください。未指定なら.data/radiant.sqliteを作成します。初回接続時にdrizzle/の既存マイグレーションをトランザクション内で適用し、適用履歴を記録します。複数SQLのbatchもまとめてコミットし、失敗時はロールバックします。
 
-- `npm run install:ci`: perform the one bounded lockfile install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build the deployable Sites artifact
-- `npm run start`: start the built Vinext application
-- `npm test`: build and verify the rendered development-preview metadata
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+永続ディスク付きの単一Node.jsホストを前提とします。Vercelなど一時ファイルシステムのサーバーレス環境や、複数ホストへの水平分散では共有データベースへの変更が必要です。DBファイルはGitに含めません。バックアップにはSQLiteの整合性を保つバックアップ手段を使ってください。
 
-Use build commands for targeted diagnosis after a remote failure, not as part of the normal checkpoint path.
+既存のDrizzleクエリとの互換性のためD1ドライバーのSQL変換部分を利用しますが、Cloudflare WorkerやD1バインディングは起動に不要です。
 
-The timeout defaults can be overridden for a controlled canary with `SITES_INSTALL_TIMEOUT`, `SITES_INSTALL_KILL_AFTER`, `SITES_BUILD_TIMEOUT`, and `SITES_BUILD_KILL_AFTER`. A timeout fails the command; the helpers never retry an unchanged install or build.
+## 認証・解析・決済の設定
 
-## Learn More
+.env.exampleを参照し、実際の値を.env.localまたはホスト側で設定します。
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+- Supabase：SUPABASE_URL、SUPABASE_PUBLISHABLE_KEY、AUTH_SITE_URL。Google/Xを有効にし、AUTH_SITE_URL/auth/callbackをSupabaseの許可済みリダイレクトURLへ追加します。本番ではAUTH_SITE_URLを実際のHTTPS URLに変更します。
+- AI解析：OPENAI_API_KEYなどのサーバー環境変数。キーをブラウザ公開用の変数にしないでください。
+- 決済：Stripeのキー・Webhookシークレット、販売者情報など既存の条件を設定します。Webhook送信先は新しいホストの/api/billing/webhookです。
+- 設定がない場合は画面を閲覧できますが、認証や有料機能は利用可能になりません。
+
+標準Next.jsでは、外部リクエストのoai-authenticated-user-*ヘッダーを認証に使用しません。本人確認はSupabaseの検証済みセッションで行います。Sites専用のログインやヘッダーだけによる旧履歴の所有者確認は使えません。
+
+## 公開中のSitesからデータを引き継ぐ場合
+
+GitHubへのpushは公開中のSitesやD1を更新しません。この移行で本番データを自動コピー・削除していません。
+
+1. 書き込みを止めた状態でD1のスキーマ・データをバックアップします。
+2. 隔離したSQLiteへ取り込み、外部キー整合性、件数、auth_accountsと各user_idの対応を検証します。
+3. 既存マイグレーションとの対応を確認してrr_node_migrationsへ適用済みtagを記録します。既存テーブルに初期マイグレーションを再実行しないでください。
+4. 同じSupabaseプロジェクトを使う場合もアカウント対応を検証します。Sitesのみの旧アカウントは別途本人確認を伴う移行が必要です。
+5. 検証済みDBをSQLITE_PATHに指定して起動し、実際のログイン・保存・決済Webhookを確認してから切り替えます。
+
+このデータ移行と外部サービスの本番設定はまだ実行していません。
+
+## 検証
+
+```sh
+npm run build
+npm test
+```
+
+テストは標準Next.jsの本番サーバー起動、主要ルート、認証ヘッダー偽装の拒否、SQLiteの再読込・ロールバック、既存の解析枠・決済・ミッション・アカウント分離を確認します。Viteは既存単体テストでTypeScriptを読み込むためだけに使用します。
+
+worker/、build/、vite.config.ts、.openai/と旧Sitesスクリプトは元の構成の参照用です。標準Next.jsの起動・ビルドには使用しません。

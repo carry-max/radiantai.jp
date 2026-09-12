@@ -1,9 +1,9 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/runtime-env";
 import { createServerClient, parseCookieHeader, serializeCookieHeader, type CookieOptions } from "@supabase/ssr";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 type AuthEnv = { SUPABASE_URL?: string; SUPABASE_PUBLISHABLE_KEY?: string; AUTH_SITE_URL?: string };
-const DEFAULT_ORIGIN = "https://radiant-review-web.kogq12234.chatgpt.site";
+const DEFAULT_ORIGIN = "http://localhost:3000";
 export const AUTH_PROVIDERS = ["google", "x"] as const;
 export type AuthProvider = typeof AUTH_PROVIDERS[number];
 export class AuthUnavailable extends Error {
@@ -14,7 +14,7 @@ export function authConfig() {
   const values = env as unknown as AuthEnv;
   const url = values.SUPABASE_URL?.trim() || "";
   const key = values.SUPABASE_PUBLISHABLE_KEY?.trim() || "";
-  const enabled = Boolean(url || key);
+  const enabled = env.STANDARD_NEXT_RUNTIME === "true" || Boolean(url || key);
   let origin = DEFAULT_ORIGIN;
   let valid = true;
   try {

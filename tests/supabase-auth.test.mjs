@@ -9,7 +9,7 @@ globalThis.__AUTH_TEST_ENV__ = {};
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({
   configFile: false, root, appType: "custom", resolve: { alias: { "@": root } },
-  plugins: [{ name: "auth-test-env", resolveId(id) { if (id === "cloudflare:workers") return "\0auth-env"; }, load(id) { if (id === "\0auth-env") return "export const env = globalThis.__AUTH_TEST_ENV__"; } }],
+  plugins: [{ name: "auth-test-env", resolveId(id) { if (id === "@/lib/runtime-env" || id.replaceAll("\\", "/").match(/\/lib\/runtime-env(?:\.ts)?$/)) return "\0auth-env"; }, load(id) { if (id === "\0auth-env" || id.replaceAll("\\","/").endsWith("/lib/runtime-env.ts")) return "export const env = globalThis.__AUTH_TEST_ENV__"; } }],
   server: { middlewareMode: true, hmr: false },
 });
 const auth = await vite.ssrLoadModule("/lib/supabase-auth.ts");
