@@ -3,6 +3,7 @@ import "./globals.css";
 import { AccountProvider } from "@/components/account-provider";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://radiantai.jp"),
   title: "Radiant Review | VALORANT VOD Coach",
   description:
     "VALORANT録画から30日間のミッションを作成。次の録画でAIが達成を確認し、経験値と成長レベルで改善を追えるVODコーチ。",

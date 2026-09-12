@@ -19,6 +19,20 @@ npm run build
 npm start
 ```
 
+## radiantai.jpへの公開
+
+本番用の`Dockerfile`は標準Next.jsのstandalone出力を起動し、`/data`をSQLiteの永続ボリュームとして使います。コンテナ対応ホストでは次の設定を使います。
+
+- 公開ポート：`3000`
+- ヘルスチェック：`/api/health`
+- 永続ボリューム：`/data`
+- SQLite：`SQLITE_PATH=/data/radiant.sqlite`
+- 正式URL：`AUTH_SITE_URL=https://radiantai.jp`、`NEXT_PUBLIC_SITE_URL=https://radiantai.jp`
+
+ホストから発行されたドメインまたはIPへ、Cloudflare DNSの`radiantai.jp`と`www`を接続します。DNS接続後、Supabaseの許可済みリダイレクトURLへ`https://radiantai.jp/auth/callback`を追加し、Stripe Webhookを`https://radiantai.jp/api/billing/webhook`へ切り替えます。HTTPSの終端は公開ホストまたはCloudflare側で行います。
+
+`radiantai.jp`のDNSは現在Cloudflareで管理されています。公開ホストが未指定のため、DNSレコードと本番シークレットはまだ変更していません。
+
 ## 画面構成
 
 | URL | Server Component | Client Component |

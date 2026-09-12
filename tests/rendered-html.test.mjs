@@ -22,6 +22,8 @@ test("standard Next renders every route and rejects forged Sites identity", {tim
     }
     const old=await fetch(origin+"/account",{redirect:"manual"});
     assert.equal(old.status,307); assert.equal(new URL(old.headers.get("location"),origin).pathname,"/login");
+    const health=await fetch(origin+"/api/health");
+    assert.equal(health.status,200); assert.deepEqual(await health.json(),{status:"ok"});
     const headers={"oai-authenticated-user-id":"owner","oai-authenticated-user-email":"owner@example.test"};
     assert.equal((await fetch(origin+"/auth/session",{headers})).status,503);
     assert.equal((await fetch(origin+"/api/player-growth",{method:"POST",headers,body:"{}"})).status,503);

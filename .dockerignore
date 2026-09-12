@@ -1,0 +1,14 @@
+.git
+.github
+.next
+.data
+.sites-runtime
+.wrangler
+dist
+node_modules
+outputs
+work
+.env
+.env.*
+!.env.example
+npm-debug.log*
