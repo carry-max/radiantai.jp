@@ -1,6 +1,30 @@
-# vinext-starter
+# Radiant Review / VALORANT
 
-A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
+VALORANTの録画から場面を切り出し、立ち回り・AIMのレビューと成長記録を扱うアプリです。
+
+## 現在の構成
+
+画面をNext.js App Routerの`app/`構成に分離しています。実行・ビルドは[Vinext](https://github.com/cloudflare/vinext)とCloudflare Workersを使用しています。標準Next.jsランタイムへの移行や、Vercelへの対応が完了した構成ではありません。
+
+| URL | ページ | 操作を担当するClient Component |
+| --- | --- | --- |
+| `/` | `app/page.tsx` | 共通ヘッダー |
+| `/login` | `app/login/page.tsx` | `components/account-view.tsx` |
+| `/dashboard` | `app/dashboard/page.tsx` | `components/dashboard-view.tsx` |
+| `/analysis` | `app/analysis/page.tsx` | `components/analysis-workspace.tsx` |
+| `/pricing` | `app/pricing/page.tsx` | `components/pricing-view.tsx` |
+| `/account` | `app/account/page.tsx` | `/login`へリダイレクト |
+
+各ページはServer Componentで、フォーム・動画操作・グラフなどの状態管理はClient Componentに配置しています。画面別metadataは各ルートの`layout.tsx`、共通スタイルは`app/globals.css`と`app/portal.css`にあります。APIは`app/api/`、認証処理は`app/auth/`に配置しています。
+
+## 開発と引き継ぎ
+
+- 必要な環境変数は`.env.example`を参照してください。実際の値はGitに追加せず、ローカル環境またはホスティング側で設定します。
+- APIは`cloudflare:workers`とD1などの実行時バインディングに依存します。通常のNode.jsだけで起動する場合は、この依存部分の移植が必要です。
+- `npm run dev`、`npm run build`、`npm test`などの既存スクリプトは下記のLinux環境を前提とします。
+- GitHubへのpushとSitesへのデプロイは別の操作です。GitHubに保存しただけでは公開中のサイトは更新されません。
+
+以下は既存のSites実行・運用手順です。
 
 ## Prerequisites
 
