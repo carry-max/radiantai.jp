@@ -88,6 +88,28 @@ CREATE TABLE IF NOT EXISTS player_growth_records (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_growth_user_analysis ON player_growth_records (user_id, analysis_id);
 CREATE INDEX IF NOT EXISTS idx_growth_user_source_date ON player_growth_records (user_id, source, recorded_at);
+CREATE TABLE IF NOT EXISTS training_videos (
+  id text PRIMARY KEY,
+  video_id text NOT NULL UNIQUE,
+  url text NOT NULL,
+  title text NOT NULL,
+  creator text NOT NULL,
+  mode text NOT NULL CHECK (mode IN ('aim', 'tactics')),
+  summary text NOT NULL DEFAULT '',
+  submitted_by text NOT NULL,
+  created_at text NOT NULL,
+  approved integer NOT NULL DEFAULT 1 CHECK (approved IN (0, 1))
+);
+CREATE INDEX IF NOT EXISTS idx_training_videos_mode_created ON training_videos (mode, created_at);
+CREATE TABLE IF NOT EXISTS training_video_votes (
+  video_id text NOT NULL REFERENCES training_videos(video_id) ON DELETE CASCADE,
+  user_id text NOT NULL,
+  created_at text NOT NULL,
+  PRIMARY KEY (video_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_training_video_votes_user ON training_video_votes (user_id);
+ALTER TABLE training_videos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training_video_votes ENABLE ROW LEVEL SECURITY;
 CREATE TABLE IF NOT EXISTS auth_accounts (
   subject text PRIMARY KEY,
   user_id text NOT NULL,

@@ -78,3 +78,27 @@ export const playerGrowthRecords = sqliteTable("player_growth_records", {
   uniqueIndex("idx_growth_user_analysis").on(table.userId, table.analysisId),
   index("idx_growth_user_source_date").on(table.userId, table.source, table.recordedAt),
 ]);
+
+export const trainingVideos = sqliteTable("training_videos", {
+  id: text("id").primaryKey(),
+  videoId: text("video_id").notNull().unique(),
+  url: text("url").notNull(),
+  title: text("title").notNull(),
+  creator: text("creator").notNull(),
+  mode: text("mode").notNull(),
+  summary: text("summary").notNull().default(""),
+  submittedBy: text("submitted_by").notNull(),
+  createdAt: text("created_at").notNull(),
+  approved: integer("approved").notNull().default(1),
+}, (table) => [
+  index("idx_training_videos_mode_created").on(table.mode, table.createdAt),
+]);
+
+export const trainingVideoVotes = sqliteTable("training_video_votes", {
+  videoId: text("video_id").notNull().references(() => trainingVideos.videoId),
+  userId: text("user_id").notNull(),
+  createdAt: text("created_at").notNull(),
+}, (table) => [
+  uniqueIndex("idx_training_video_votes_video_user").on(table.videoId, table.userId),
+  index("idx_training_video_votes_user").on(table.userId),
+]);
