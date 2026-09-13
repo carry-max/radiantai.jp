@@ -71,6 +71,8 @@ import { AccountLink, useAccount } from "@/components/account-provider";
 import { accountStorageKeys } from "@/lib/account-storage";
 import type { AnalysisAllowance } from "@/lib/analysis-access";
 import { fingerprintRecording, monthlyPhase, type MonthlySummary } from "@/lib/monthly-missions";
+import { TrainingVideoList } from "@/components/training-video-list";
+import { recommendTrainingVideos } from "@/lib/training-videos";
 import {
   type DeathCandidate,
   type DeathDetectionSample,
@@ -1335,6 +1337,15 @@ export function AnalysisWorkspace() {
                     </button>;
                   })}</div></div> : null}
                   <div className="review-block"><h4>改善アクション</h4><ol>{review.improvements.map((item) => <li key={item}>{item}</li>)}</ol></div>
+                  <TrainingVideoList
+                    compact
+                    title="この分析に合うおすすめ動画"
+                    description="主な問題と次の練習から、関連する教材を上から3本選びました。"
+                    videos={recommendTrainingVideos(
+                      review.mode === "aim" ? "aim" : "tactics",
+                      [review.main_issue.category, review.main_issue.evidence, review.next_focus, ...review.improvements].join(" "),
+                    )}
+                  />
                   {!isDemo && analysisId ? <div className="review-feedback"><span>このレビューは役立ちましたか？</span><div><Button size="sm" variant="outline" onClick={() => void submitFeedback("helpful")}>役立った</Button><Button size="sm" variant="outline" onClick={() => void submitFeedback("incorrect")}>根拠・指摘に疑問がある</Button></div><p role="status">{feedbackNotice}</p></div> : null}
                   <p className="uncertainty"><AlertTriangle />{review.uncertainty}</p>
                 </div>
