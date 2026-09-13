@@ -34,7 +34,7 @@ async function smallBody(request: Request) {
 }
 
 async function getHandler(request: Request) {
-  const user = await getSiteUser(request);
+  const user = request.headers.get("x-radiant-account") ? await getSiteUser(request) : null;
   try {
     const videos = await getCommunityTrainingVideos(getMissionDb(), user?.id || "");
     return json({ signedIn: Boolean(user), videos, count: videos.length, aiCount: TOTAL_VIDEO_LIMIT - COMMUNITY_VIDEO_LIMIT, limit: TOTAL_VIDEO_LIMIT });
