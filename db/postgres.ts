@@ -172,7 +172,7 @@ export class PostgresDatabase {
   private client;
   private initialized: Promise<QueryClient>;
 
-  constructor(url: string) {
+  constructor(url: string, initializeSchema = true) {
     this.client = postgres(url, {
       max: 2,
       idle_timeout: 20,
@@ -180,7 +180,7 @@ export class PostgresDatabase {
       prepare: false,
       ssl: "require",
     });
-    this.initialized = this.migrate();
+    this.initialized = initializeSchema ? this.migrate() : Promise.resolve(this.client as unknown as QueryClient);
   }
 
   private async migrate() {
@@ -220,6 +220,7 @@ export class PostgresDatabase {
 }
 
 const runtime = globalThis as typeof globalThis & { radiantPostgres?: PostgresDatabase; radiantPostgresUrl?: string };
+const scopedRuntime = globalThis as typeof globalThis & { radiantScopedPostgres?: PostgresDatabase; radiantScopedPostgresUrl?: string };
 
 export function getPostgresDatabase(url: string) {
   if (!runtime.radiantPostgres || runtime.radiantPostgresUrl !== url) {
@@ -227,4 +228,12 @@ export function getPostgresDatabase(url: string) {
     runtime.radiantPostgresUrl = url;
   }
   return runtime.radiantPostgres;
+}
+
+export function getScopedPostgresDatabase(url: string) {
+  if (!scopedRuntime.radiantScopedPostgres || scopedRuntime.radiantScopedPostgresUrl !== url) {
+    scopedRuntime.radiantScopedPostgres = new PostgresDatabase(url, false);
+    scopedRuntime.radiantScopedPostgresUrl = url;
+  }
+  return scopedRuntime.radiantScopedPostgres;
 }

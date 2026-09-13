@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { getScopedPostgresDatabase } from "@/db/postgres";
 import { getMissionDb } from "@/lib/monthly-store";
 import { sameOriginRequest } from "@/lib/service-config";
 import { getSiteUser, withAuth } from "@/lib/site-user";
@@ -13,6 +14,10 @@ import {
 
 const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers });
+const trainingVideoDb = () => {
+  const url = process.env.TRAINING_VIDEOS_DATABASE_URL?.trim();
+  return url ? getScopedPostgresDatabase(url) : getMissionDb();
+};
 const submitSchema = z.object({
   action: z.literal("submit"),
   url: z.string().trim().max(300),
@@ -36,7 +41,7 @@ async function smallBody(request: Request) {
 async function getHandler(request: Request) {
   const user = request.headers.get("x-radiant-account") ? await getSiteUser(request) : null;
   try {
-    const videos = await getCommunityTrainingVideos(getMissionDb(), user?.id || "");
+    const videos = await getCommunityTrainingVideos(trainingVideoDb(), user?.id || "");
     return json({ signedIn: Boolean(user), videos, count: videos.length, aiCount: TOTAL_VIDEO_LIMIT - COMMUNITY_VIDEO_LIMIT, limit: TOTAL_VIDEO_LIMIT });
   } catch {
     return json({ error: "利用者ランキングを読み込めませんでした。" }, 503);
@@ -50,12 +55,12 @@ async function postHandler(request: Request) {
   const body = await smallBody(request).catch(() => null);
   const selection = selectSchema.safeParse(body);
   if (selection.success) {
-    const found = await selectCommunityTrainingVideo(getMissionDb(), user.id, selection.data.videoId, selection.data.selected);
+    const found = await selectCommunityTrainingVideo(trainingVideoDb(), user.id, selection.data.videoId, selection.data.selected);
     return found ? json({ ok: true }) : json({ error: "対象の動画が見つかりません。" }, 404);
   }
   const submission = submitSchema.safeParse(body);
   if (!submission.success) return json({ error: "YouTube URL、動画名、発信者、分類を確認してください。" }, 400);
-  const result = await submitCommunityTrainingVideo(getMissionDb(), user.id, submission.data);
+  const result = await submitCommunityTrainingVideo(trainingVideoDb(), user.id, submission.data);
   if (result.ok) return json({ ok: true, videoId: result.videoId });
   const messages = {
     invalid: "YouTubeの動画URLを入力してください。",
