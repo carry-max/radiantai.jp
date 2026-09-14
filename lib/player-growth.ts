@@ -55,7 +55,7 @@ export type SkillRating = { skill: PlayerSkillId; level: number; evidence: strin
 export type PlayerGrowthRecord = { id: string; source: GrowthSource; recordedAt: string; label: string; note: string; ratings: SkillRating[] };
 export const LEVEL_LABELS = ["未評価", "1 · 基礎を確認", "2 · 意識するとできる", "3 · この条件でできる", "4 · 安定してできる", "5 · 条件が変わっても再現"];
 
-export function verifiedSkillRatings(value: unknown, frameTimes: number[], reviewOk: boolean, mode: "tactics" | "aim" = "tactics"): SkillRating[] {
+export function verifiedSkillRatings(value: unknown, frameTimes: number[], reviewOk: boolean, mode: "tactics" | "aim" | "round" = "tactics"): SkillRating[] {
   if (!reviewOk || !Array.isArray(value)) return [];
   const used = new Set<string>();
   return value.flatMap(raw => {

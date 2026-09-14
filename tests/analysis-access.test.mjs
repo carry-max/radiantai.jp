@@ -215,6 +215,47 @@ test("AIM capture windows validate at boundaries, caches separate mode and crop,
   assert.deepEqual(growth.verifiedSkillRatings([forged],[9.6,9.8,10],true,"aim"),[]);
   assert.equal(growth.verifiedSkillRatings([{...forged,times:[9.601,9.801,10.001]}],[9.6,9.8,10],true,"aim")[0].times.length,3);
   assert.deepEqual(growth.verifiedSkillRatings([{...forged,times:[9.6,9.8,10]}],[9.6,9.8,10],true,"tactics"),[]);
+  const roundTargets = modes.captureRoundTargets(30, 130, 180);
+  assert.equal(roundTargets.length, 6);
+  assert.deepEqual(roundTargets.map(item => item.time), [30, 50, 70, 90, 110, 130]);
+  assert.equal(modes.validRoundSequence(roundTargets.map(item => item.time), 30, 130), true);
+  assert.deepEqual(modes.captureRoundTargets(30, 35, 180), []);
+  assert.deepEqual(modes.captureRoundTargets(30, 331, 400), []);
+  assert.notEqual(modes.analysisSceneKey("round", 130, "center", 30), modes.analysisSceneKey("round", 130, "center", 31));
+});
+
+test("round review requires a verified six-frame range and returns all five review sections", async () => {
+  const db=database(); const originalFetch=globalThis.fetch;
+  Object.assign(globalThis.__ANALYSIS_TEST_ENV__,{DB:db,OPENAI_API_KEY:"test-server-key"});
+  const targets=modes.captureRoundTargets(30,130,180);
+  const frames=targets.map(({time},index)=>({time,label:`ROUND ${index+1}`,dataUrl:"data:image/jpeg;base64,AA=="}));
+  let calls=0;
+  globalThis.fetch=async (_url,options)=>{
+    calls++; const body=JSON.parse(options.body);
+    assert.match(body.instructions,/ラウンドレビュー担当/);
+    assert.ok(body.text.format.schema.required.includes("round_review"));
+    assert.equal(body.max_output_tokens,3200);
+    return Response.json({output_text:JSON.stringify({
+      status:"ok",headline:"情報に合わせて寄る",observed:["開始時は2サイトに配置"],
+      evidence_frames:[{time:30,observation:"開始時のミニマップに5人が見える"},{time:90,observation:"A側に敵表示がある"}],
+      skill_assessments:[{skill:"round_decisions",level:2,evidence:"情報後も配置を維持",times:[30,90]}],
+      main_issue:{category:"ローテ",severity:"medium",evidence:"敵表示後も人数配分が変わらない"},
+      improvements:["確定情報で人数配分を見直す"],next_focus:"敵3人の確定情報で1人寄る",
+      mission_check:{status:"not_applicable",evidence:"対象外",confidence:"low",evidence_times:[]},
+      confidence:"medium",uncertainty:"通話と画面外の動きは不明",
+      round_review:{initial_setup:"両サイトに配置",player_distribution:"2-1-2",information_gained:"A側に敵表示",rotation:"寄りがない",loss_reason:"A側の人数不足"},
+    })});
+  };
+  try {
+    const request=(input=frames,start=30)=>api.POST(new Request("https://review.test/api/analyze",{method:"POST",headers:{"oai-authenticated-user-id":"round-owner"},body:JSON.stringify({mode:"round",recordingId:"c".repeat(64),roundStart:start,deathTimestamp:130,frames:input})}));
+    const malformed=await request(frames.slice(1)); assert.equal(malformed.status,400); assert.equal(calls,0);
+    const response=await request(); const result=await response.json();
+    assert.equal(response.status,200,JSON.stringify(result));
+    assert.equal(result.review.mode,"round");
+    assert.equal(result.review.round_review.loss_reason,"A側の人数不足");
+    assert.equal(result.review.mission_check.status,"not_applicable");
+    assert.equal(result.review.skill_assessments[0].skill,"round_decisions");
+  } finally {globalThis.fetch=originalFetch;delete globalThis.__ANALYSIS_TEST_ENV__.DB;delete globalThis.__ANALYSIS_TEST_ENV__.OPENAI_API_KEY;db.sqlite.close();}
 });
 
 test("AIM uses one six-image call and shared credits, excludes monthly XP, and holds duplicated evidence", async () => {

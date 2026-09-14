@@ -66,7 +66,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MonthlyMissions } from "@/components/monthly-missions";
 import { PlayerGrowth } from "@/components/player-growth";
 import { AimMeasurement } from "@/components/aim-measurement";
-import { captureTargets, preciseTime, aimFrameLabel, type ReviewMode, type AimCrop } from "@/lib/review-modes";
+import { captureTargets, captureRoundTargets, preciseTime, aimFrameLabel, ROUND_FRAME_LABELS, type ReviewMode, type AimCrop } from "@/lib/review-modes";
 import { AccountLink, useAccount } from "@/components/account-provider";
 import { accountStorageKeys } from "@/lib/account-storage";
 import type { AnalysisAllowance } from "@/lib/analysis-access";
@@ -107,6 +107,13 @@ type Review = {
   mission_check?: MissionCheck;
   confidence: "low" | "medium" | "high";
   uncertainty: string;
+  round_review?: {
+    initial_setup: string;
+    player_distribution: string;
+    information_gained: string;
+    rotation: string;
+    loss_reason: string;
+  };
 };
 
 type MatchContext = {
@@ -189,6 +196,12 @@ function frameLabel(offset: number) {
   return offset < 0 ? `デス${Math.abs(offset)}秒前` : `デス${offset}秒後`;
 }
 
+function reviewModeLabel(mode?: ReviewMode) {
+  if (mode === "aim") return "AIM";
+  if (mode === "round") return "ラウンドレビュー";
+  return "デス原因";
+}
+
 function isVideoFile(file: File) {
   return file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v)$/i.test(file.name);
 }
@@ -261,6 +274,22 @@ function demoReview(firstTag?: string, mode: ReviewMode = "tactics"): Review {
     improvements: ["射撃場で頭の高さを意識して照準を置く。", "同じ距離・武器で練習を繰り返し、接敵前の照準位置を見比べる。"],
     next_focus: "次の練習では、敵を見る前の照準の高さを1つ確認する。",
     confidence: "low", uncertainty: "表示例です。6枚の画像から反応速度・命中率・マウスの動きは測定しません。",
+  };
+  if (mode === "round") return {
+    mode, status: "ok", headline: "情報に合わせて守備配置を更新する",
+    observed: ["これはラウンドレビューの表示例です。実際の録画を確認していません。", "本解析では開始から終了までの6枚を時系列で確認します。"],
+    main_issue: { category: "ローテ", severity: "medium", evidence: "例：反対サイトの接敵情報が見えた後も、初期配置から人数配分が変わっていません。" },
+    improvements: ["確定した敵人数とスパイク情報を基準に、寄る人数を決める。", "ローテ後も空いたレーンと退路を1つ残す。"],
+    next_focus: "次のラウンドは、確定情報を得た時点で人数配分を1回見直す。",
+    mission_check: { status: "not_applicable", evidence: "ラウンドレビューでは月間ミッションを判定しません。", confidence: "low" },
+    confidence: "low", uncertainty: "表示例です。画像間の通話や視点外の動きは確認できません。",
+    round_review: {
+      initial_setup: "開始時は両サイトを確認できる配置です。",
+      player_distribution: "中央を含む複数レーンへ人数を分けています。",
+      information_gained: "反対サイト側で接敵した想定の表示例です。",
+      rotation: "情報後の人数移動が遅れた場面として扱います。",
+      loss_reason: "確定情報に対する配置更新が遅れ、守備人数が足りなくなった想定です。",
+    },
   };
   const category = firstTag === "不要ピーク" ? "ピーク判断" : firstTag === "スキル残し" ? "スキル運用" : firstTag === "人数有利" ? "人数管理" : "トレード";
   return {
@@ -364,6 +393,8 @@ export function AnalysisWorkspace() {
   const [videoTooLong, setVideoTooLong] = useState(false);
   const [frames, setFrames] = useState<Frame[]>([]);
   const [deathTimestamp, setDeathTimestamp] = useState(0);
+  const [roundStart, setRoundStart] = useState<number | null>(null);
+  const [roundEnd, setRoundEnd] = useState<number | null>(null);
   const [deathSource, setDeathSource] = useState<"auto" | "manual">("auto");
   const [deathCandidates, setDeathCandidates] = useState<DeathCandidate[]>([]);
   const [selectedDeathId, setSelectedDeathId] = useState("");
@@ -532,10 +563,10 @@ export function AnalysisWorkspace() {
     role,
     side,
     round,
-    timestamp: reviewMode === "aim" ? preciseTime(deathTimestamp) : formatTime(deathTimestamp),
+    timestamp: reviewMode === "aim" ? preciseTime(deathTimestamp) : reviewMode === "round" && roundStart !== null && roundEnd !== null ? `${formatTime(roundStart)}〜${formatTime(roundEnd)}` : formatTime(deathTimestamp),
     note: note.trim(),
     tags: selectedTags,
-  }), [agent, deathTimestamp, map, note, role, round, selectedTags, side, reviewMode]);
+  }), [agent, deathTimestamp, map, note, role, round, roundEnd, roundStart, selectedTags, side, reviewMode]);
 
   const saveHistory = useCallback((nextReview: Review, usedModel: string) => {
     const entry: HistoryEntry = {
@@ -580,6 +611,8 @@ export function AnalysisWorkspace() {
     setVideoReady(false);
     setVideoTooLong(false);
     setFrames([]);
+    setRoundStart(null);
+    setRoundEnd(null);
     setDeathCandidates([]);
     setSelectedDeathId("");
     setDetectionProgress(0);
@@ -639,6 +672,42 @@ export function AnalysisWorkspace() {
     setSelectedDeathId("");
     await captureFramesAt(video.currentTime, "manual");
   }, [captureFramesAt]);
+
+  const captureRoundFrames = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video || roundStart === null || roundEnd === null || isCapturing || isAnalyzing) return;
+    const targets = captureRoundTargets(roundStart, roundEnd, video.duration);
+    if (targets.length !== 6) {
+      setStatus({ message: "ラウンド開始より10秒以上あとに終了を指定してください（最大5分）。", tone: "error" });
+      return;
+    }
+    video.pause();
+    const runId = ++captureRunRef.current;
+    setReview(null); setAnalysisId(""); setIsDemo(false); setFeedbackNotice("");
+    setIsCapturing(true); setFrames([]); setCaptureProgress(0); setDeathTimestamp(roundEnd);
+    setStatus({ message: "ラウンド全体から6枚を時系列で切り出しています…", tone: "neutral" });
+    try {
+      const captured: Frame[] = [];
+      for (let index = 0; index < targets.length; index += 1) {
+        await waitForSeek(video, targets[index].time);
+        if (runId !== captureRunRef.current) return;
+        captured.push({
+          time: targets[index].time,
+          label: ROUND_FRAME_LABELS[index],
+          dataUrl: frameDataUrl(video, "round", "full"),
+        });
+        setCaptureProgress(Math.round(((index + 1) / targets.length) * 100));
+      }
+      setFrames(captured);
+      await waitForSeek(video, roundEnd);
+      if (runId !== captureRunRef.current) return;
+      setStatus({ message: `${formatTime(roundStart)}〜${formatTime(roundEnd)}の6枚を取得しました。ラウンド全体を解析できます。`, tone: "success" });
+    } catch (error) {
+      if (runId === captureRunRef.current) setStatus({ message: error instanceof Error ? error.message : "ラウンドの切り出しに失敗しました。", tone: "error" });
+    } finally {
+      if (runId === captureRunRef.current) setIsCapturing(false);
+    }
+  }, [isAnalyzing, isCapturing, roundEnd, roundStart]);
 
   const detectDeaths = useCallback(async () => {
     const sourceUrl = objectUrlRef.current;
@@ -799,26 +868,26 @@ export function AnalysisWorkspace() {
   const playReviewWindow = useCallback(async () => {
     const video = videoRef.current;
     if (!video || frames.length < 2 || !duration) return;
-    const start = Math.max(0, deathTimestamp - (reviewMode === "aim" ? 0.4 : 20));
-    reviewEndRef.current = Math.min(duration, deathTimestamp + (reviewMode === "aim" ? 0.4 : 5));
+    const start = reviewMode === "round" && roundStart !== null ? roundStart : Math.max(0, deathTimestamp - (reviewMode === "aim" ? 0.4 : 20));
+    reviewEndRef.current = reviewMode === "round" && roundEnd !== null ? roundEnd : Math.min(duration, deathTimestamp + (reviewMode === "aim" ? 0.4 : 5));
     video.currentTime = start;
     setIsReviewPlaying(true);
     try {
       await video.play();
-      setStatus({ message: reviewMode === "aim" ? "選択した基準時刻の前後0.4秒を再生しています。" : "デス前20秒からデス後5秒まで再生しています。", tone: "neutral" });
+      setStatus({ message: reviewMode === "aim" ? "選択した基準時刻の前後0.4秒を再生しています。" : reviewMode === "round" ? "指定したラウンド全体を再生しています。" : "デス前20秒からデス後5秒まで再生しています。", tone: "neutral" });
     } catch {
       reviewEndRef.current = null;
       setIsReviewPlaying(false);
       setStatus({ message: "再生を開始できませんでした。動画の再生ボタンをお試しください。", tone: "error" });
     }
-  }, [deathTimestamp, duration, frames.length, reviewMode]);
+  }, [deathTimestamp, duration, frames.length, reviewMode, roundEnd, roundStart]);
 
   const finishReview = useCallback((nextReview: Review, usedModel: string, message: string) => {
     setReview(nextReview);
     setIsDemo(usedModel === "demo");
     if (usedModel === "demo") { setAnalysisId(""); setFeedbackNotice(""); }
     if (usedModel !== "demo") saveHistory(nextReview, usedModel);
-    if (usedModel !== "demo" && nextReview.mode !== "aim" && nextReview.status === "ok") {
+    if (usedModel !== "demo" && nextReview.mode === "tactics" && nextReview.status === "ok") {
       setGrowthProgress((current) => {
         const now = new Date().toISOString();
         const createMission = (): GrowthMission => ({
@@ -872,13 +941,14 @@ export function AnalysisWorkspace() {
     videoRef.current?.pause(); reviewEndRef.current = null; setIsReviewPlaying(false);
     captureRunRef.current++; analysisRunRef.current++;
     setReviewMode(nextMode); setAimCrop(crop); setFrames([]); setReview(null);
+    setRoundStart(null); setRoundEnd(null);
     setAnalysisId(""); setIsDemo(false); setFeedbackNotice(""); setSelectedDeathId(""); setSelectedTags([]);
-    setStatus({ message: nextMode === "aim" ? "撃ち始め付近で動画を停止し、AIMの6枚を切り出してください。" : "デス候補を選ぶか、現在時刻を追加してください。", tone: "neutral" });
+    setStatus({ message: nextMode === "aim" ? "撃ち始め付近で動画を停止し、AIMの6枚を切り出してください。" : nextMode === "round" ? "動画上でラウンド開始と終了を指定してください。" : "デス候補を選ぶか、現在時刻を追加してください。", tone: "neutral" });
   };
 
   const analyze = async () => {
     if (isAnalyzing) return;
-    if (frames.length < (reviewMode === "aim" ? 6 : 2)) {
+    if (frames.length < (reviewMode === "tactics" ? 2 : 6)) {
       setStatus({ message: "先に解析する場面を切り出してください。", tone: "error" });
       return;
     }
@@ -892,7 +962,7 @@ export function AnalysisWorkspace() {
     const runId = ++analysisRunRef.current;
     const activeMission = growthProgress.activeMission;
     const previousMission = reviewMode === "tactics" && activeMission && matchId && activeMission.sourceMatchId !== matchId && !activeMission.checkedMatchIds.includes(matchId) ? activeMission.text : "";
-    setStatus({ message: reviewMode === "aim" ? "AIが照準と同じ敵の位置関係を6枚で確認しています…" : monthly?.cycle ? "AIが今回の場面と月間ミッションを照合しています…" : "AIが場面を確認し、30日間のミッションを作成しています…", tone: "neutral" });
+    setStatus({ message: reviewMode === "aim" ? "AIが照準と同じ敵の位置関係を6枚で確認しています…" : reviewMode === "round" ? "AIが初期配置からラウンド敗因までを6枚で確認しています…" : monthly?.cycle ? "AIが今回の場面と月間ミッションを照合しています…" : "AIが場面を確認し、30日間のミッションを作成しています…", tone: "neutral" });
     try {
       const nextRecordingId = recordingId || await fingerprintRecording(file);
       if (runId !== analysisRunRef.current) return;
@@ -900,7 +970,7 @@ export function AnalysisWorkspace() {
       const response = await accountFetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...(apiKey.trim() ? { apiKey: apiKey.trim(), model } : {}), mode: reviewMode, aimCrop, deathTimestamp, metadata: matchContext, previousMission, monthlyTracking: reviewMode === "tactics", recordingId: nextRecordingId, renewMonthly, frames: frames.map(({ label, dataUrl, time }) => ({ label, dataUrl, time })) }),
+        body: JSON.stringify({ ...(apiKey.trim() ? { apiKey: apiKey.trim(), model } : {}), mode: reviewMode, aimCrop, deathTimestamp, ...(reviewMode === "round" ? { roundStart } : {}), metadata: matchContext, previousMission, monthlyTracking: reviewMode === "tactics", recordingId: nextRecordingId, renewMonthly, frames: frames.map(({ label, dataUrl, time }) => ({ label, dataUrl, time })) }),
       });
       const data = (await response.json()) as { ok?: boolean; error?: string; review?: Review; model?: string; monthly?: MonthlySummary; monthlyNotice?: string; xpAwarded?: number; monthlySaved?: boolean; analysisId?: string; cached?: boolean; growthNotice?: string };
       if (!response.ok || !data.ok || !data.review) throw new Error(data.error || "AI解析に失敗しました。");
@@ -950,7 +1020,7 @@ export function AnalysisWorkspace() {
       lines.push(
         `## ${index + 1}. ${entry.metadata.map || "Map未設定"} / ${entry.metadata.agent || entry.metadata.role}`,
         `- 日時: ${new Date(entry.createdAt).toLocaleString("ja-JP")}`,
-        `- モード: ${entry.review.mode === "aim" ? "AIM" : "立ち回り"}`,
+        `- モード: ${reviewModeLabel(entry.review.mode)}`,
         `- 攻守: ${entry.metadata.side || "未設定"}`,
         `- 動画時刻: ${entry.metadata.timestamp || "未設定"}`,
         `- 主な問題: ${entry.review.main_issue.category}`,
@@ -970,7 +1040,7 @@ export function AnalysisWorkspace() {
   }, [captureFramesAt, isCapturing, isDetectingDeaths]);
 
   const growthInsights = useMemo(() => {
-    const verifiedHistory = historyItems.filter(entry => entry.model !== "demo" && entry.review.mode !== "aim" && entry.review.status === "ok");
+    const verifiedHistory = historyItems.filter(entry => entry.model !== "demo" && (entry.review.mode || "tactics") === "tactics" && entry.review.status === "ok");
     const severityValue = { low: 1, medium: 2, high: 3 } as const;
     const rankedDimension = (selector: (entry: HistoryEntry) => string) => {
       const groups = new Map<string, { count: number; total: number }>();
@@ -1056,7 +1126,7 @@ export function AnalysisWorkspace() {
     };
   }, [historyItems]);
 
-  const reviewReady = frames.length >= (reviewMode === "aim" ? 6 : 2);
+  const reviewReady = frames.length >= (reviewMode === "tactics" ? 2 : 6);
   const totalXp = growthProgress.totalXp + (monthly?.totalXp || 0);
   const growthLevel = Math.floor(totalXp / XP_PER_LEVEL) + 1;
   const xpInLevel = totalXp % XP_PER_LEVEL;
@@ -1144,15 +1214,20 @@ export function AnalysisWorkspace() {
 
         <section className="review-mode-bar" aria-label="解析モード">
           <div className="review-mode-switch" role="group" aria-label="目的を選ぶ">
-            <button type="button" aria-pressed={reviewMode === "tactics"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => changeReviewMode("tactics")}><MapPinned /><span><strong>立ち回り</strong><small>ピーク・位置取り・判断</small></span></button>
-            <button type="button" aria-pressed={reviewMode === "aim"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => changeReviewMode("aim")}><Crosshair /><span><strong>AIM</strong><small>照準の置き方・修正</small></span></button>
+            <div className="review-mode-family"><span>個人レビュー</span><div className="review-mode-options">
+              <button type="button" aria-pressed={reviewMode === "tactics"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => changeReviewMode("tactics")}><MapPinned /><span><strong>デス原因</strong><small>判断・位置取り</small></span></button>
+              <button type="button" aria-pressed={reviewMode === "aim"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => changeReviewMode("aim")}><Crosshair /><span><strong>AIM</strong><small>照準・修正</small></span></button>
+            </div></div>
+            <div className="review-mode-family"><span>ラウンドレビュー</span><div className="review-mode-options single">
+              <button type="button" aria-pressed={reviewMode === "round"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => changeReviewMode("round")}><UsersRound /><span><strong>ラウンド全体</strong><small>配置・情報・ローテ・敗因</small></span></button>
+            </div></div>
           </div>
-          <div className="review-mode-price"><Badge variant="outline">両モード同料金</Badge><p>1試合で合計3解析。立ち回り1回＋AIM2回など、自由に配分できます。</p><small>別モード・切り出し範囲を変えた解析はそれぞれ1回分。保存済み結果の再表示は消費しません。</small></div>
+          <div className="review-mode-price"><Badge variant="outline">全モード同料金</Badge><p>1試合で合計3解析。デス原因・AIM・ラウンド全体へ自由に配分できます。</p><small>別モード・切り出し範囲を変えた解析はそれぞれ1回分。保存済み結果の再表示は消費しません。</small></div>
         </section>
         <section className="pipeline" aria-label="処理の流れ">
           <div><span className="pipeline-icon"><Play /></span><p><small>01 / LOCAL</small><strong>録画を選択</strong></p></div>
-          <div><span className="pipeline-icon"><ScanLine /></span><p><small>02 / {reviewMode === "aim" ? "SELECT MOMENT" : "AUTO DETECT"}</small><strong>{reviewMode === "aim" ? "撃ち始め付近で停止" : "デスを自動検出"}</strong></p></div>
-          <div><span className="pipeline-icon"><BrainCircuit /></span><p><small>03 / REVIEW</small><strong>{reviewMode === "aim" ? "0.8秒の6枚を確認" : "前20秒〜後5秒を解析"}</strong></p></div>
+          <div><span className="pipeline-icon"><ScanLine /></span><p><small>02 / {reviewMode === "aim" ? "SELECT MOMENT" : reviewMode === "round" ? "SELECT ROUND" : "AUTO DETECT"}</small><strong>{reviewMode === "aim" ? "撃ち始め付近で停止" : reviewMode === "round" ? "開始と終了を指定" : "デスを自動検出"}</strong></p></div>
+          <div><span className="pipeline-icon"><BrainCircuit /></span><p><small>03 / REVIEW</small><strong>{reviewMode === "aim" ? "0.8秒の6枚を確認" : reviewMode === "round" ? "ラウンド全体を解析" : "前20秒〜後5秒を解析"}</strong></p></div>
           <aside><Zap /> 自動検出・成長分析は全ユーザー利用可</aside>
         </section>
 
@@ -1197,7 +1272,7 @@ export function AnalysisWorkspace() {
                     setVideoTooLong(tooLong);
                     setStatus(tooLong
                       ? { message: "試作版は最大60分です。短く分割して読み込んでください。", tone: "error" }
-                      : { message: reviewMode === "aim" ? "撃ち始め付近で停止して、AIMの6枚を切り出してください。" : "録画を読み込みました。デス地点の自動検出を開始します。", tone: "success" });
+                      : { message: reviewMode === "aim" ? "撃ち始め付近で停止して、AIMの6枚を切り出してください。" : reviewMode === "round" ? "録画を読み込みました。ラウンド開始と終了を指定してください。" : "録画を読み込みました。デス地点の自動検出を開始します。", tone: "success" });
                   }}
                   onError={() => setStatus({ message: "この動画を再生できません。MP4またはWebMをお試しください。", tone: "error" })}
                 />
@@ -1246,19 +1321,27 @@ export function AnalysisWorkspace() {
                   <Crosshair /> 現在時刻を追加
                 </Button>
               </div>
-              </> : <div className="aim-capture-controls">
+              </> : reviewMode === "aim" ? <div className="aim-capture-controls">
                 <div><p className="eyebrow">AIM / 0.8 SECOND WINDOW</p><h3>撃ち始め付近を、6枚で見比べる</h3><p>自分の視点の録画を使い、同じ敵と照準が見える時刻で停止してください。60fpsの録画を推奨します。</p></div>
                 <label>切り出す範囲<NativeSelect value={aimCrop} disabled={isCapturing || isAnalyzing} onChange={event => changeReviewMode("aim", event.target.value as AimCrop)}><NativeSelectOption value="center">中央を拡大（照準付近）</NativeSelectOption><NativeSelectOption value="full">全画面（敵が中央にいないとき）</NativeSelectOption></NativeSelect></label>
                 <div className="aim-seek-controls">{[-0.03, 0.03].map(delta => <Button key={delta} variant="outline" size="sm" disabled={!videoReady || isCapturing || isAnalyzing} onClick={() => { const video = videoRef.current; if (video) { video.pause(); video.currentTime = Math.max(0, Math.min(video.duration - .05, video.currentTime + delta)); } }}>{delta < 0 ? "−0.03秒" : "＋0.03秒"}</Button>)}<Button disabled={!videoReady || videoTooLong || isCapturing || isAnalyzing} onClick={() => void captureFrames()}><Crosshair /> この時刻のAIMを切り出す</Button></div>
                 <p className="aim-method-note">選んだ時刻の前0.4秒〜後0.4秒。中央拡大は固定の正方形です。敵・照準が隠れている場合は範囲や時刻を変えてください。基準時刻は実際の初弾時刻を自動検出したものではありません。</p>
+              </div> : <div className="round-capture-controls">
+                <div><p className="eyebrow">ROUND / SIX TIMELINE FRAMES</p><h3>開始から終了まで、ラウンド全体を見る</h3><p>動画をラウンド開始で止めて「開始に設定」、次に決着後で止めて「終了に設定」を押してください。</p></div>
+                <div className="round-marker-grid">
+                  <div><small>START</small><strong>{roundStart === null ? "未設定" : formatTime(roundStart)}</strong><Button type="button" variant="outline" disabled={!videoReady || isCapturing || isAnalyzing} onClick={() => { const video = videoRef.current; if (!video) return; const time = Math.min(video.currentTime, video.duration - .05); setRoundStart(time); setRoundEnd(null); setFrames([]); setReview(null); setStatus({ message: `${formatTime(time)}をラウンド開始に設定しました。決着後へ移動してください。`, tone: "success" }); }}><Play /> 現在時刻を開始に設定</Button></div>
+                  <div><small>END</small><strong>{roundEnd === null ? "未設定" : formatTime(roundEnd)}</strong><Button type="button" variant="outline" disabled={!videoReady || roundStart === null || isCapturing || isAnalyzing} onClick={() => { const video = videoRef.current; if (!video || roundStart === null) return; const time = Math.min(video.currentTime, video.duration - .05); if (time - roundStart < 10 || time - roundStart > 300) { setStatus({ message: "終了は開始の10秒〜5分後に設定してください。", tone: "error" }); return; } setRoundEnd(time); setFrames([]); setReview(null); setStatus({ message: `${formatTime(time)}をラウンド終了に設定しました。6枚を切り出せます。`, tone: "success" }); }}><CheckCircle2 /> 現在時刻を終了に設定</Button></div>
+                </div>
+                <Button type="button" disabled={!videoReady || roundStart === null || roundEnd === null || isCapturing || isAnalyzing} onClick={() => void captureRoundFrames()}><UsersRound /> ラウンド全体を6枚で切り出す</Button>
+                <p className="aim-method-note">10秒〜5分の区間に対応。開始・序盤・中盤・終盤・決着前・終了の6枚を端末内で作成します。</p>
               </div>}
               {isCapturing ? <div className="capture-progress"><Progress value={captureProgress} /><span>{captureProgress}%</span></div> : null}
               {reviewReady ? (
                 <div className="review-window-row">
                   <Button type="button" variant="outline" disabled={isCapturing || isReviewPlaying} onClick={() => void playReviewWindow()}>
-                    <Play /> {isReviewPlaying ? "場面を再生中…" : reviewMode === "aim" ? "前後0.4秒を再生" : "デス前20秒〜後5秒を再生"}
+                    <Play /> {isReviewPlaying ? "場面を再生中…" : reviewMode === "aim" ? "前後0.4秒を再生" : reviewMode === "round" ? "ラウンド全体を再生" : "デス前20秒〜後5秒を再生"}
                   </Button>
-                  <span>{reviewMode === "aim" ? "選択時刻" : deathSource === "auto" ? "自動検出" : "手動追加"} {reviewMode === "aim" ? preciseTime(deathTimestamp) : formatTime(deathTimestamp)}</span>
+                  <span>{reviewMode === "aim" ? `選択時刻 ${preciseTime(deathTimestamp)}` : reviewMode === "round" && roundStart !== null && roundEnd !== null ? `ラウンド ${formatTime(roundStart)}〜${formatTime(roundEnd)}` : `${deathSource === "auto" ? "自動検出" : "手動追加"} ${formatTime(deathTimestamp)}`}</span>
                 </div>
               ) : null}
             </section>
@@ -1274,7 +1357,7 @@ export function AnalysisWorkspace() {
                     </figure>
                   ))}
                 </div>
-              ) : <div className="empty-frames"><Target /><div><strong>{isDetectingDeaths ? "デスを探しています" : "まだ場面がありません"}</strong><span>{reviewMode === "aim" ? "撃ち始め付近で停止し、上のボタンから切り出します。" : isDetectingDeaths ? "検出後、最初のデス前20秒〜後5秒が自動で並びます。" : "録画を選ぶとデス地点を自動検出します。"}</span></div></div>}
+              ) : <div className="empty-frames"><Target /><div><strong>{isDetectingDeaths ? "デスを探しています" : "まだ場面がありません"}</strong><span>{reviewMode === "aim" ? "撃ち始め付近で停止し、上のボタンから切り出します。" : reviewMode === "round" ? "ラウンド開始と終了を指定すると、全体から6枚を切り出せます。" : isDetectingDeaths ? "検出後、最初のデス前20秒〜後5秒が自動で並びます。" : "録画を選ぶとデス地点を自動検出します。"}</span></div></div>}
               {reviewMode === "aim" && frames.length === 6 ? <AimMeasurement key={`${frames[0].dataUrl.slice(-80)}:${deathTimestamp}:${aimCrop}`} frames={frames} /> : null}
             </section>
           </div>
@@ -1298,20 +1381,20 @@ export function AnalysisWorkspace() {
               </div>
               <fieldset className="tag-fieldset">
                 <legend>自分で気になった点 <small>任意・複数</small></legend>
-                <div className="tag-list">{(reviewMode === "aim" ? ["照準の高さ", "初期位置", "大きな修正", "追いAIM", "小さな修正"] : TAGS).map((tag) => {
+                <div className="tag-list">{(reviewMode === "aim" ? ["照準の高さ", "初期位置", "大きな修正", "追いAIM", "小さな修正"] : reviewMode === "round" ? ["初期配置", "人数配分", "情報取得", "ローテ", "ラウンド敗因"] : TAGS).map((tag) => {
                   const active = selectedTags.includes(tag);
                   return <Button key={tag} type="button" size="sm" variant="outline" aria-pressed={active} className={active ? "tag-active" : ""} onClick={() => toggleTag(tag)}>{active ? <CheckCircle2 /> : null}{tag}</Button>;
                 })}</div>
               </fieldset>
-              <label className="note-field"><span>補足メモ <small>任意</small></span><Textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} placeholder={reviewMode === "aim" ? "例：Vandal、20m程度。同じ敵を狙った場面。" : "例：Aリテイク。味方のフラッシュを待てず先にピークした。"} /></label>
+              <label className="note-field"><span>補足メモ <small>任意</small></span><Textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} placeholder={reviewMode === "aim" ? "例：Vandal、20m程度。同じ敵を狙った場面。" : reviewMode === "round" ? "例：守り。Aサイトへのラッシュ対応で敗北したラウンド。" : "例：Aリテイク。味方のフラッシュを待てず先にピークした。"} /></label>
               <div className={`status-line ${status.tone}`} role="status" aria-live="polite">
                 {status.tone === "error" ? <AlertTriangle /> : status.tone === "success" ? <CheckCircle2 /> : <Clock3 />}<span>{status.message}</span>
               </div>
               <Button type="button" size="lg" disabled={!reviewReady || isAnalyzing || (!apiKey.trim() && (!serviceReady || !signedIn || Boolean(allowanceError)))} onClick={() => void analyze()} className="analyze-button">
-                {isAnalyzing ? <LoaderCircle className="spin" /> : <Sparkles />}{isAnalyzing ? "AI解析中…" : "この場面の改善点を確認"}
+                {isAnalyzing ? <LoaderCircle className="spin" /> : <Sparkles />}{isAnalyzing ? "AI解析中…" : reviewMode === "round" ? "このラウンドをレビュー" : "この場面の改善点を確認"}
               </Button>
               <Button type="button" variant="ghost" disabled={isAnalyzing} onClick={() => finishReview(demoReview(selectedTags[0], reviewMode), "demo", "デモレビューを表示しました。月間ミッション・XPは変更されません。")} className="demo-button"><Play /> サンプルレビューを見る</Button>
-              {reviewMode === "aim" ? <p className="aim-result-note">AIMは照準の位置関係を確認し、根拠がある評価を成長グラフへ記録します。反応速度・命中率・入力の正確な時刻は測定できません。月間ミッションとXPは立ち回りモードで判定します。</p> : null}
+              {reviewMode === "aim" ? <p className="aim-result-note">AIMは照準の位置関係を確認し、根拠がある評価を成長グラフへ記録します。反応速度・命中率・入力の正確な時刻は測定できません。月間ミッションとXPはデス原因モードで判定します。</p> : reviewMode === "round" ? <p className="aim-result-note">ラウンドレビューは初期配置から敗因までを確認します。画像間の通話や画面外の動きは断定せず、月間ミッションとXPの判定対象にはしません。</p> : null}
               <p className="cost-note">最大6枚の画像・試合情報・練習課題をOpenAIへ送ります。動画全体・音声は送りません。{apiKey.trim() ? "自分のAPIキーでの解析は別途API料金が発生します。" : "無料体験・有料プランの範囲内では追加料金はありません。"}</p>
             </section>
 
@@ -1319,7 +1402,7 @@ export function AnalysisWorkspace() {
               <SectionHeading step="04" eyebrow="COACHING OUTPUT" title="今回のレビュー" trailing={review ? <Badge className={`confidence ${review.confidence}`}>{isDemo ? "表示例・未解析" : review.status === "insufficient" ? "判定保留" : `確度 ${({low: "低", medium: "中", high: "高"})[review.confidence]}`}</Badge> : undefined} />
               {review ? (
                 <div className="review-content">
-                  <p className="review-kicker">{review.mode === "aim" ? "AIM · " : "立ち回り · "}{isDemo ? "サンプル · あなたの録画の解析結果ではありません" : "次の試合で直すこと"}</p>
+                  <p className="review-kicker">{reviewModeLabel(review.mode)} · {isDemo ? "サンプル · あなたの録画の解析結果ではありません" : "次の試合で直すこと"}</p>
                   <h3>{review.headline}</h3>
                   {review.mission_check && review.mission_check.status !== "not_applicable" ? (
                     <div className={`mission-check-card ${review.mission_check.status}`}>
@@ -1327,8 +1410,17 @@ export function AnalysisWorkspace() {
                       <div><small>前回ミッションのAI判定</small><strong>{review.mission_check.status === "cleared" ? `クリア・+${XP_PER_CLEAR} XP` : review.mission_check.status === "improving" ? "改善中・XPはクリア後" : review.mission_check.status === "not_cleared" ? "未クリア・次の録画へ継続" : "判定保留・次の録画へ継続"}</strong><p>{review.mission_check.evidence}</p></div>
                     </div>
                   ) : null}
-                  <div className="focus-card"><Crosshair /><div><small>{review.mode === "aim" ? "次のAIM練習" : "現在の成長ミッション"}</small><strong>{isDemo || review.mode === "aim" ? review.next_focus : growthProgress.activeMission?.text || review.next_focus}</strong></div></div>
+                  <div className="focus-card"><Crosshair /><div><small>{review.mode === "aim" ? "次のAIM練習" : review.mode === "round" ? "次のラウンドの課題" : "現在の成長ミッション"}</small><strong>{isDemo || review.mode === "aim" || review.mode === "round" ? review.next_focus : growthProgress.activeMission?.text || review.next_focus}</strong></div></div>
                   <div className="issue-card"><div><span>主な問題</span><Badge variant="outline">{review.main_issue.category}</Badge></div><p>{review.main_issue.evidence}</p></div>
+                  {review.mode === "round" && review.round_review ? <div className="round-review-grid" aria-label="ラウンドレビュー5項目">
+                    {([
+                      ["初期配置", review.round_review.initial_setup],
+                      ["人数配分", review.round_review.player_distribution],
+                      ["情報取得", review.round_review.information_gained],
+                      ["ローテ", review.round_review.rotation],
+                      ["ラウンド敗因", review.round_review.loss_reason],
+                    ] as const).map(([label, value], index) => <article key={label}><span>{String(index + 1).padStart(2, "0")}</span><div><h4>{label}</h4><p>{value}</p></div></article>)}
+                  </div> : null}
                   <div className="review-block"><h4>画面で確認できたこと</h4><ul>{review.observed.map((item) => <li key={item}>{item}</li>)}</ul></div>
                   {!isDemo && review.evidence_frames?.length ? <div className="review-block"><h4>結論の根拠となる場面</h4><div className="evidence-list">{review.evidence_frames.map((item, index) => {
                     const frame = frames.find(frame => Math.abs(frame.time - item.time) < 0.01);
@@ -1360,7 +1452,7 @@ export function AnalysisWorkspace() {
             <div className="history-list">{historyItems.map((entry) => (
               <article key={entry.id} className="history-item">
                 <time>{new Intl.DateTimeFormat("ja-JP", { dateStyle: "short", timeStyle: "short" }).format(new Date(entry.createdAt))}</time>
-                <div><strong>{entry.review.mode === "aim" ? "AIM" : "立ち回り"} / {entry.metadata.map || "Map未設定"} / {entry.metadata.agent || entry.metadata.role}</strong><span>{entry.metadata.timestamp}・{entry.review.main_issue.category}</span></div>
+                <div><strong>{reviewModeLabel(entry.review.mode)} / {entry.metadata.map || "Map未設定"} / {entry.metadata.agent || entry.metadata.role}</strong><span>{entry.metadata.timestamp}・{entry.review.main_issue.category}</span></div>
                 <p>{entry.review.next_focus}</p>
                 <Button type="button" variant="ghost" size="icon-sm" aria-label="この履歴を削除" onClick={() => deleteHistory(entry.id)}><Trash2 /></Button>
               </article>

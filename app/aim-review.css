@@ -1,5 +1,9 @@
 .review-mode-bar { display: grid; grid-template-columns: minmax(300px, 1fr) 1fr; gap: 1.5rem; align-items: center; margin: 0 0 1.25rem; padding: 1rem; background: var(--ink-2); border: 1px solid var(--line); border-radius: .75rem; }
 .review-mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.review-mode-family { display: grid; align-content: start; gap: .45rem; }
+.review-mode-family > span { color: var(--mint); font-size: .68rem; font-weight: 750; letter-spacing: .1em; }
+.review-mode-options { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; height: 100%; }
+.review-mode-options.single { grid-template-columns: 1fr; }
 .review-mode-switch button { display: flex; align-items: center; gap: .8rem; padding: 1rem; text-align: left; border: 1px solid var(--line); border-radius: .5rem; color: var(--muted-foreground); background: var(--card); cursor: pointer; }
 .review-mode-switch button[aria-pressed="true"] { color: var(--mint); border-color: var(--mint); background: #142822; }
 .review-mode-switch button:disabled { opacity: .5; cursor: wait; }
@@ -16,6 +20,19 @@
 .aim-seek-controls, .aim-mark-tools { display: flex; gap: .5rem; flex-wrap: wrap; }
 .aim-capture-controls .aim-method-note, .aim-result-note { font-size: .875rem; line-height: 1.8; color: #a4b9b0; }
 .aim-result-note { margin-top: 1rem; padding: 1rem; border-left: 2px solid var(--mint); background: #10201e; }
+.round-capture-controls { display: grid; gap: 1rem; margin: 1rem; padding: 1.25rem; border: 1px solid #2b5147; border-radius: .5rem; background: #10201e; }
+.round-capture-controls h3 { margin: .4rem 0; font-size: 1.1rem; }
+.round-capture-controls p { color: #b7c9c2; font-size: 1rem; line-height: 1.8; }
+.round-capture-controls .eyebrow { color: var(--mint); font-size: .8rem; }
+.round-marker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+.round-marker-grid > div { display: grid; gap: .55rem; padding: .8rem; border: 1px solid #2d473f; background: #0c1715; }
+.round-marker-grid small { color: #93a69f; font: 700 .68rem/1 var(--font-mono); letter-spacing: .1em; }
+.round-marker-grid strong { color: var(--mint); font: 750 1.05rem/1 var(--font-mono); }
+.round-review-grid { display: grid; gap: .55rem; }
+.round-review-grid article { display: grid; grid-template-columns: 2rem 1fr; gap: .75rem; padding: .85rem; border: 1px solid var(--line); background: #0d141b; }
+.round-review-grid article > span { color: var(--mint); font: 750 .72rem/1.5 var(--font-mono); }
+.round-review-grid h4 { margin: 0 0 .28rem; font-size: .82rem; }
+.round-review-grid p { margin: 0; color: #b7c1cd; font-size: .78rem; line-height: 1.65; }
 .aim-frames figure img { aspect-ratio: 1; object-fit: contain; background: #050809; }
 .aim-frames figcaption { flex-wrap: wrap; gap: .2rem; font-size: .875rem; }
 .aim-measurement { margin: 1rem; padding: 1rem; border: 1px solid #305046; border-radius: .5rem; background: #0d1917; min-width: 0; }
@@ -45,4 +62,5 @@
 .aim-offset-values b { display: block; font-variant-numeric: tabular-nums; color: var(--mint); }
 .review-mode-switch button:focus-visible, .aim-frame-tabs button:focus-visible, .aim-measurement summary:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
 @media (max-width: 850px) { .review-mode-bar { grid-template-columns: 1fr; gap: 1rem; } }
-@media (max-width: 520px) { .review-mode-switch button { padding: .7rem .5rem; gap: .4rem; } .review-mode-switch small { font-size: .8rem; } .aim-capture-controls, .aim-measurement { margin: .7rem; padding: .8rem; } .aim-frame-tabs { grid-template-columns: repeat(3, 1fr); } .aim-coordinates > div { grid-template-columns: repeat(2, 1fr); } .aim-seek-controls > button:last-child { width: 100%; } }
+@media (max-width: 620px) { .review-mode-switch { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { .review-mode-switch button { padding: .7rem .5rem; gap: .4rem; } .review-mode-switch small { font-size: .8rem; } .aim-capture-controls, .round-capture-controls, .aim-measurement { margin: .7rem; padding: .8rem; } .round-marker-grid { grid-template-columns: 1fr; } .aim-frame-tabs { grid-template-columns: repeat(3, 1fr); } .aim-coordinates > div { grid-template-columns: repeat(2, 1fr); } .aim-seek-controls > button:last-child { width: 100%; } }

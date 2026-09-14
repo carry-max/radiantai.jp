@@ -7,7 +7,7 @@ import { AccessError, reserveAnalysis, completeAnalysis, failAnalysis, getAnalys
 import { z } from "zod";
 import { SKILL_ASSESSMENT_SCHEMA, SKILL_ASSESSMENT_INSTRUCTIONS, verifiedSkillRatings } from "@/lib/player-growth";
 import { saveAiGrowth } from "@/lib/player-growth-store";
-import { AIM_COACH_INSTRUCTIONS, AIM_OUTPUT_LIMIT, analysisSceneKey, validAimSequence, type ReviewMode, type AimCrop } from "@/lib/review-modes";
+import { AIM_COACH_INSTRUCTIONS, AIM_OUTPUT_LIMIT, ROUND_COACH_INSTRUCTIONS, ROUND_OUTPUT_LIMIT, analysisSceneKey, validAimSequence, validRoundSequence, type ReviewMode, type AimCrop } from "@/lib/review-modes";
 import { requestVideoAnalysis } from "@/lib/video-analysis-client";
 
 const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
@@ -84,6 +84,19 @@ const REVIEW_SCHEMA = {
   additionalProperties: false,
 };
 
+const ROUND_REVIEW_SCHEMA = {
+  type: "object",
+  properties: {
+    initial_setup: { type: "string" },
+    player_distribution: { type: "string" },
+    information_gained: { type: "string" },
+    rotation: { type: "string" },
+    loss_reason: { type: "string" },
+  },
+  required: ["initial_setup", "player_distribution", "information_gained", "rotation", "loss_reason"],
+  additionalProperties: false,
+};
+
 const COACH_INSTRUCTIONS = `あなたは高ランク帯VALORANT専門のVODコーチです。
 入力は、ユーザーの死亡前20秒から死亡後5秒までの時系列スクリーンショットです。
 画面に写る事実と推測を分け、見えない情報を断定しないでください。
@@ -114,6 +127,16 @@ const validatedReviewSchema = z.object({
   confidence: confidenceSchema, uncertainty: z.string().max(1000),
 }).passthrough();
 
+const validatedRoundReviewSchema = validatedReviewSchema.extend({
+  round_review: z.object({
+    initial_setup: z.string().min(1).max(800),
+    player_distribution: z.string().min(1).max(800),
+    information_gained: z.string().min(1).max(800),
+    rotation: z.string().min(1).max(800),
+    loss_reason: z.string().min(1).max(800),
+  }),
+});
+
 type AnalyzeBody = {
   mode?: unknown;
   aimCrop?: unknown;
@@ -126,6 +149,7 @@ type AnalyzeBody = {
   recordingId?: unknown;
   renewMonthly?: unknown;
   deathTimestamp?: unknown;
+  roundStart?: unknown;
 };
 
 type SafeFrame = { label: string; dataUrl: string; time: number | null };
@@ -191,8 +215,8 @@ function extractOutputText(response: Record<string, unknown>) {
   throw new Error("AIの応答本文を取得できませんでした。");
 }
 
-function validateReview(value: unknown) {
-  const parsed = validatedReviewSchema.safeParse(value);
+function validateReview(value: unknown, mode: ReviewMode) {
+  const parsed = (mode === "round" ? validatedRoundReviewSchema : validatedReviewSchema).safeParse(value);
   if (!parsed.success) throw new Error("AIの解析結果を確認できませんでした。試合枠は消費していません。");
   return parsed.data;
 }
@@ -249,8 +273,8 @@ async function postHandler(request: Request) {
     }
 
     const body = await readAnalyzeBody(request);
-    if (body.mode !== undefined && body.mode !== "tactics" && body.mode !== "aim") throw new RequestError("解析モードを選び直してください。");
-    const mode: ReviewMode = body.mode === "aim" ? "aim" : "tactics";
+    if (body.mode !== undefined && body.mode !== "tactics" && body.mode !== "aim" && body.mode !== "round") throw new RequestError("解析モードを選び直してください。");
+    const mode: ReviewMode = body.mode === "aim" ? "aim" : body.mode === "round" ? "round" : "tactics";
     if (mode === "aim" && body.aimCrop !== undefined && body.aimCrop !== "center" && body.aimCrop !== "full") throw new RequestError("AIMの切り出し範囲を選び直してください。");
     const aimCrop: AimCrop = body.aimCrop === "full" ? "full" : "center";
     const config = serviceConfig();
@@ -262,6 +286,7 @@ async function postHandler(request: Request) {
     if (!ALLOWED_MODELS.has(model)) throw new RequestError("選択されたモデルは利用できません。");
     const frames = cleanFrames(body.frames);
     if (mode === "aim" && !validAimSequence(frames.map(frame => frame.time), body.deathTimestamp)) throw new RequestError("AIMは基準時刻の前後0.4秒・6枚で解析します。AIMモードで切り出し直してください。");
+    if (mode === "round" && !validRoundSequence(frames.map(frame => frame.time), body.roundStart, body.deathTimestamp)) throw new RequestError("ラウンド開始と終了を指定し、ラウンド全体を切り出し直してください。");
     const metadata = cleanMetadata(body.metadata);
     const previousMission = mode === "tactics" ? cleanText(body.previousMission, 320) : "";
     const user = await getSiteUser(request);
@@ -272,7 +297,8 @@ async function postHandler(request: Request) {
       const deathTime = body.deathTimestamp;
       if (typeof deathTime !== "number" || !Number.isFinite(deathTime) || deathTime < 0 || deathTime > 3600) throw new RequestError("場面の時刻を確認してください。");
       if (frames.some(frame => frame.time === null)) throw new RequestError("フレームの時刻を確認できませんでした。もう一度切り出してください。");
-      const result = await reserveAnalysis(getMissionDb(), user.id, await getEntitlement(user.id), recordingId, analysisSceneKey(mode, deathTime, aimCrop));
+      const roundStart = mode === "round" && typeof body.roundStart === "number" ? body.roundStart : 0;
+      const result = await reserveAnalysis(getMissionDb(), user.id, await getEntitlement(user.id), recordingId, analysisSceneKey(mode, deathTime, aimCrop, roundStart));
       reservation = result.reservation;
       if (result.cached) {
         const cachedRatings = verifiedSkillRatings(result.cached.review?.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), result.cached.review?.status === "ok", mode);
@@ -305,15 +331,16 @@ async function postHandler(request: Request) {
       properties: {
         ...REVIEW_SCHEMA.properties,
         ...(mode === "aim" ? { skill_assessments: { ...SKILL_ASSESSMENT_SCHEMA, items: { ...SKILL_ASSESSMENT_SCHEMA.items, properties: { ...SKILL_ASSESSMENT_SCHEMA.items.properties, skill: { type: "string", enum: ["aim", "crosshair"] } } } } } : {}),
+        ...(mode === "round" ? { round_review: ROUND_REVIEW_SCHEMA } : {}),
         ...(createMonthlyPlan ? { monthly_plan: MONTHLY_PLAN_SCHEMA } : {}),
         ...(monthlyTask ? { monthly_check: REVIEW_SCHEMA.properties.mission_check } : {}),
       },
-      required: [...REVIEW_SCHEMA.required, ...(createMonthlyPlan ? ["monthly_plan"] : []), ...(monthlyTask ? ["monthly_check"] : [])],
+      required: [...REVIEW_SCHEMA.required, ...(mode === "round" ? ["round_review"] : []), ...(createMonthlyPlan ? ["monthly_plan"] : []), ...(monthlyTask ? ["monthly_check"] : [])],
     };
 
     const content: Array<Record<string, unknown>> = [{
       type: "input_text",
-      text: `${mode === "aim" ? `以下はユーザーが選んだ基準時刻の前後0.4秒のAIM用6枚です。切り出しは${aimCrop === "center" ? "画面中央の固定領域（拡大）" : "全画面"}。基準時刻は実際の発砲時刻とは限りません。` : "以下はデス前20秒からデス後5秒まで、順番に並んだフレームです。"}画面で確認できる内容だけを根拠にレビューしてください。\n試合情報: ${JSON.stringify(metadata)}\n前回ミッション: ${previousMission || "なし"}\n月間ミッション: ${monthlyTask ? JSON.stringify(monthlyTask) : "なし"}`,
+      text: `${mode === "aim" ? `以下はユーザーが選んだ基準時刻の前後0.4秒のAIM用6枚です。切り出しは${aimCrop === "center" ? "画面中央の固定領域（拡大）" : "全画面"}。基準時刻は実際の発砲時刻とは限りません。` : mode === "round" ? `以下は録画時刻${body.roundStart}秒から${body.deathTimestamp}秒までの1ラウンドを均等に切り出した6枚です。` : "以下はデス前20秒からデス後5秒まで、順番に並んだフレームです。"}画面で確認できる内容だけを根拠にレビューしてください。\n試合情報: ${JSON.stringify(metadata)}\n前回ミッション: ${previousMission || "なし"}\n月間ミッション: ${monthlyTask ? JSON.stringify(monthlyTask) : "なし"}`,
     }];
     for (const frame of frames) {
       content.push({ type: "input_text", text: `${frame.label}${frame.time === null ? "" : ` / 録画時刻 ${frame.time} 秒`}` });
@@ -322,14 +349,14 @@ async function postHandler(request: Request) {
 
     const upstreamPayload = {
         model,
-        instructions: (mode === "aim" ? AIM_COACH_INSTRUCTIONS : COACH_INSTRUCTIONS) + (monthlyTask ? "\n前回ミッションはmission_check、月間ミッションはmonthly_checkで独立に判定してください。monthly_checkにも同じ厳密な映像根拠・秒数・high確信度の条件を適用します。月間の課題と達成条件を前回ミッションで置き換えないでください。" : "") + (createMonthlyPlan ? `\n今回は30日間のミッションを作ります。monthly_planを必ず4項目で出してください。
+        instructions: (mode === "aim" ? AIM_COACH_INSTRUCTIONS : mode === "round" ? ROUND_COACH_INSTRUCTIONS + SKILL_ASSESSMENT_INSTRUCTIONS : COACH_INSTRUCTIONS) + (monthlyTask ? "\n前回ミッションはmission_check、月間ミッションはmonthly_checkで独立に判定してください。monthly_checkにも同じ厳密な映像根拠・秒数・high確信度の条件を適用します。月間の課題と達成条件を前回ミッションで置き換えないでください。" : "") + (createMonthlyPlan ? `\n今回は30日間のミッションを作ります。monthly_planを必ず4項目で出してください。
 今回の反省点をもとに、第1週は基本の修正、第2週は別の試合で再現、第3週は関連した判断へ応用、第4週は今月の重点を再確認する流れにしてください。
 各項目はtitle（短い見出し）、action（1つの具体的行動）、success_criteria（別の録画の時系列画像から確認できる達成条件）で構成します。
 各課題は最短で1回の次試合レビューで判定できる内容にし、毎日アップロードする条件や特定のマップ・エージェントでないと挑戦できない条件は避けてください。
 4課題すべて同じ文章にせず、今回の根拠に沿った段階的な内容にしてください。判定材料が足りない場合statusをinsufficientとしてください。` : ""),
         input: [{ role: "user", content }],
         reasoning: { effort: "low" },
-        max_output_tokens: mode === "aim" ? AIM_OUTPUT_LIMIT : createMonthlyPlan ? 3600 : monthlyTask ? 3000 : 2600,
+        max_output_tokens: mode === "aim" ? AIM_OUTPUT_LIMIT : mode === "round" ? ROUND_OUTPUT_LIMIT : createMonthlyPlan ? 3600 : monthlyTask ? 3000 : 2600,
         store: false,
         text: {
           format: {
@@ -352,7 +379,7 @@ async function postHandler(request: Request) {
     const upstreamBody = await upstream.json() as Record<string, unknown>;
     if (!upstream.ok) return json({ ok: false, error: personalKey ? friendlyApiError(upstream.status, upstreamBody) : "AIサービスへの接続に失敗しました。試合枠は消費していません。時間をおいて再度お試しください。" }, 502);
 
-    const review = validateReview(JSON.parse(extractOutputText(upstreamBody)));
+    const review = validateReview(JSON.parse(extractOutputText(upstreamBody)), mode);
     review.mode = mode;
     review.aim_crop = mode === "aim" ? aimCrop : undefined;
     review.evidence_frames = review.evidence_frames.flatMap(item => {
@@ -387,7 +414,7 @@ async function postHandler(request: Request) {
         monthlyResult = { monthlySaved: false, xpAwarded: 0, monthlyNotice: "レビューは完了しましたが、月間ミッションを保存できませんでした。進捗を再読み込みして確認してください。" };
       }
     }
-    const growthAnalysisId = reservation?.id || (user && /^[a-f0-9]{64}$/.test(recordingId) ? `personal:${recordingId}:${analysisSceneKey(mode, Number(body.deathTimestamp) || 0, aimCrop)}` : null);
+    const growthAnalysisId = reservation?.id || (user && /^[a-f0-9]{64}$/.test(recordingId) ? `personal:${recordingId}:${analysisSceneKey(mode, Number(body.deathTimestamp) || 0, aimCrop, mode === "round" && typeof body.roundStart === "number" ? body.roundStart : 0)}` : null);
     const usage = upstreamBody.usage && typeof upstreamBody.usage === "object" ? upstreamBody.usage as Record<string, unknown> : {};
     const payload = { ok: true, review, model: cleanText(upstreamBody.model, 80) || model, usage: { ...usage, review_mode: mode, input_images: frames.length }, analysisId: reservation?.id || null, growthNotice: "", ...monthlyResult };
     if (reservation) {
@@ -395,7 +422,7 @@ async function postHandler(request: Request) {
       reservation = null;
     }
     if (user && growthAnalysisId) {
-      try { await saveAiGrowth(getMissionDb(), user.id, growthAnalysisId, verifiedSkillRatings(review.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), review.status === "ok", mode), `${mode === "aim" ? "AIM" : "立ち回り"} / ${metadata.map || "マップ未設定"} / ${metadata.agent || metadata.role || "エージェント未設定"} / ${metadata.timestamp || "レビュー"}`); }
+      try { await saveAiGrowth(getMissionDb(), user.id, growthAnalysisId, verifiedSkillRatings(review.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), review.status === "ok", mode), `${mode === "aim" ? "AIM" : mode === "round" ? "ラウンド" : "デス原因"} / ${metadata.map || "マップ未設定"} / ${metadata.agent || metadata.role || "エージェント未設定"} / ${metadata.timestamp || "レビュー"}`); }
       catch { payload.growthNotice = "成長グラフに保存できませんでした。同じ場面の再表示で再度反映を試せます。"; }
     }
     return json(payload);
