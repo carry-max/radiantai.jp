@@ -234,6 +234,7 @@ test("round review requires a verified six-frame range and returns all five revi
     calls++; const body=JSON.parse(options.body);
     assert.match(body.instructions,/ラウンドレビュー担当/);
     assert.ok(body.text.format.schema.required.includes("round_review"));
+    assert.ok(body.text.format.schema.properties.main_issue.properties.category.enum.includes("ローテ"));
     assert.equal(body.max_output_tokens,3200);
     return Response.json({output_text:JSON.stringify({
       status:"ok",headline:"情報に合わせて寄る",observed:["開始時は2サイトに配置"],
