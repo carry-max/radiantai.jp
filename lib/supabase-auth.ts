@@ -3,6 +3,7 @@ import { createServerClient, parseCookieHeader, serializeCookieHeader, type Cook
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 type AuthEnv = {
+  SUPABASE_AUTH_URL?: string;
   NEXT_PUBLIC_SUPABASE_URL?: string;
   NEXT_PUBLIC_SUPABASE_ANON_KEY?: string;
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?: string;
@@ -20,7 +21,10 @@ export class AuthUnavailable extends Error {
 
 export function authConfig() {
   const values = env as unknown as AuthEnv;
-  const url = values.NEXT_PUBLIC_SUPABASE_URL?.trim() || values.SUPABASE_URL?.trim() || "";
+  const url = values.SUPABASE_AUTH_URL?.trim()
+    || values.NEXT_PUBLIC_SUPABASE_URL?.trim()
+    || values.SUPABASE_URL?.trim()
+    || "";
   const key = values.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim()
     || values.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
     || values.SUPABASE_PUBLISHABLE_KEY?.trim()
