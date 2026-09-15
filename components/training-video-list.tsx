@@ -36,13 +36,13 @@ export function TrainingVideoList({ videos, compact = false, preloadFirst = fals
             </a>
             <div className="training-video-copy">
               <div className="training-video-meta">
-                <strong>#{compact ? index + 1 : video.rank}</strong>
+                <strong>{compact ? `#${index + 1}` : video.targetRank}</strong>
                 <span>{video.level}</span>
                 <small>{video.creator}</small>
               </div>
               <h3>{video.title}</h3>
               <p>{video.summary}</p>
-              <div className="training-skills">{video.skills.map((skill) => <span key={skill}>{skill}</span>)}</div>
+              <div className="training-skills" aria-label="学習テーマ"><small>学習テーマ</small>{video.skills.map((skill) => <span key={skill}>{skill}</span>)}</div>
               <a className="training-watch" href={video.url} target="_blank" rel="noreferrer">YouTubeで見る <ArrowUpRight /></a>
             </div>
           </article>
