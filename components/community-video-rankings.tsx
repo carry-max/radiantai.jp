@@ -15,7 +15,7 @@ type RankingResponse = { videos: CommunityTrainingVideo[]; count: number; aiCoun
 
 export function CommunityVideoRankings() {
   const { request, snapshot } = useAccount();
-  const [data, setData] = useState<RankingResponse>({ videos: [], count: 0, aiCount: 8, limit: 300 });
+  const [data, setData] = useState<RankingResponse>({ videos: [], count: 0, aiCount: 9, limit: 300 });
   const [mode, setMode] = useState<"all" | "aim" | "tactics">("all");
   const [expanded, setExpanded] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -84,14 +84,14 @@ export function CommunityVideoRankings() {
   return (
     <section className="community-ranking" id="community-ranking">
       <div className="community-ranking-head">
-        <div><p className="eyebrow"><UsersRound /> COMMUNITY RANKING</p><h2>利用者が選んだ動画ランキング</h2><p>利用者の選択数が多い順です。ログインすると1動画につき1票を選択・解除できます。</p></div>
+        <div><p className="eyebrow"><UsersRound /> USER PICKS</p><h2>ユーザーのおすすめ</h2><p>ユーザーが投稿・推薦した動画を、選択数が多い順に表示します。ログインすると動画の追加と推薦ができます。</p></div>
         <div className="community-count"><strong>{data.aiCount + data.count}</strong><span>AI {data.aiCount} ＋ 利用者 {data.count} / 最大 {data.limit} 本</span></div>
       </div>
       <div className="community-controls">
         <div className="community-tabs" aria-label="動画分類">
           {([['all', 'すべて'], ['aim', 'AIM'], ['tactics', '立ち回り']] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={mode === value} onClick={() => { setMode(value); setExpanded(false); }}>{label}</button>)}
         </div>
-        {snapshot?.user ? <Button type="button" variant="outline" onClick={() => setFormOpen((current) => !current)}><Plus /> 動画を登録</Button> : <Link className="portal-secondary" href="/login">ログインして動画を選ぶ</Link>}
+        {snapshot?.user ? <Button type="button" variant="outline" onClick={() => setFormOpen((current) => !current)}><Plus /> おすすめ動画を追加</Button> : <Link className="portal-secondary" href="/login">ログインしておすすめを追加</Link>}
       </div>
       {formOpen ? (
         <form className="community-submit" action={(formData) => void submit(formData)}>
@@ -111,7 +111,7 @@ export function CommunityVideoRankings() {
           <div className="community-video-copy"><small>{video.creator}</small><h3>{video.title}</h3>{video.summary ? <p>{video.summary}</p> : null}<a href={video.url} target="_blank" rel="noreferrer">YouTubeで見る <ExternalLink /></a></div>
           <Button type="button" variant={video.selected ? "default" : "outline"} disabled={busy === video.videoId} aria-pressed={video.selected} onClick={() => void select(video)}>{busy === video.videoId ? <LoaderCircle className="spin" /> : video.selected ? <Check /> : <ThumbsUp />} {video.voteCount}</Button>
         </article>
-      ))}</div> : <div className="community-empty"><UsersRound /><strong>まだ利用者動画がありません</strong><p>最初の日本語VALORANT教材を登録できます。</p></div>}
+      ))}</div> : <div className="community-empty"><UsersRound /><strong>ユーザーのおすすめはまだありません</strong><p>ログインすると、最初のおすすめ動画を追加できます。</p></div>}
       {!expanded && filtered.length > 12 ? <Button className="community-more" type="button" variant="ghost" onClick={() => setExpanded(true)}>残り{filtered.length - 12}本を表示 <ChevronDown /></Button> : null}
     </section>
   );

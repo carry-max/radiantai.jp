@@ -9,6 +9,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ configFile: false, root, appType: "custom", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(async () => { await vite.close(); });
 const store = await vite.ssrLoadModule("/lib/training-video-rankings.ts");
+const catalogue = await vite.ssrLoadModule("/lib/training-videos.ts");
 const migration = await readFile(new URL("../drizzle/0006_training_video_rankings.sql", import.meta.url), "utf8");
 
 function database() {
@@ -27,6 +28,17 @@ test("YouTube URL validation accepts canonical, short and shorts links only", ()
   assert.equal(store.youtubeVideoId("https://youtu.be/Smozh3gEFV4?t=10"), "Smozh3gEFV4");
   assert.equal(store.youtubeVideoId("https://youtube.com/shorts/Smozh3gEFV4"), "Smozh3gEFV4");
   assert.equal(store.youtubeVideoId("https://example.com/watch?v=Smozh3gEFV4"), null);
+});
+
+test("curated catalogue contains one valid video for every VALORANT rank", () => {
+  assert.deepEqual(catalogue.TRAINING_VIDEOS.map(video => video.targetRank), catalogue.VALORANT_RANKS);
+  assert.equal(new Set(catalogue.TRAINING_VIDEOS.map(video => video.videoId)).size, catalogue.VALORANT_RANKS.length);
+  for (const video of catalogue.TRAINING_VIDEOS) {
+    assert.match(video.url, new RegExp(`^https://www\\.youtube\\.com/watch\\?v=${video.videoId}$`));
+    assert.ok(video.title.length > 0);
+    assert.ok(video.summary.length > 0);
+    assert.ok(video.skills.length > 0);
+  }
 });
 
 test("community ranking deduplicates videos and counts one selection per user", async () => {
