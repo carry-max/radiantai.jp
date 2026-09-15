@@ -185,7 +185,7 @@ export class PostgresDatabase {
 
   private async migrate() {
     await this.client.begin(async transaction => {
-      await transaction.unsafe("SELECT pg_advisory_xact_lock(72616469616e7461)");
+      await transaction.unsafe("SELECT pg_advisory_xact_lock(72616469616e7461::bigint)");
       for (const statement of POSTGRES_SCHEMA.split(";").map(value => value.trim()).filter(Boolean)) {
         await transaction.unsafe(statement);
       }
