@@ -8,7 +8,11 @@ export async function GET() {
     return Response.json({ status: "ok" }, {
       headers: { "Cache-Control": "no-store" },
     });
-  } catch {
+  } catch (error) {
+    console.error("Database health check failed", {
+      name: error instanceof Error ? error.name : "UnknownError",
+      code: error && typeof error === "object" && "code" in error ? String(error.code) : "",
+    });
     return Response.json({ status: "unavailable" }, {
       status: 503,
       headers: { "Cache-Control": "no-store" },
