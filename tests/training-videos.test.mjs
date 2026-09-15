@@ -30,9 +30,13 @@ test("YouTube URL validation accepts canonical, short and shorts links only", ()
   assert.equal(store.youtubeVideoId("https://example.com/watch?v=Smozh3gEFV4"), null);
 });
 
-test("curated catalogue contains one valid video for every VALORANT rank", () => {
-  assert.deepEqual(catalogue.TRAINING_VIDEOS.map(video => video.targetRank), catalogue.VALORANT_RANKS);
-  assert.equal(new Set(catalogue.TRAINING_VIDEOS.map(video => video.videoId)).size, catalogue.VALORANT_RANKS.length);
+test("curated catalogue contains a five-video ranking for every VALORANT rank", () => {
+  assert.equal(new Set(catalogue.TRAINING_VIDEOS.map(video => video.videoId)).size, catalogue.TRAINING_VIDEOS.length);
+  for (const rank of catalogue.VALORANT_RANKS) {
+    const ranked = catalogue.videosForRank(rank);
+    assert.equal(ranked.length, 5);
+    assert.equal(new Set(ranked.map(video => video.videoId)).size, 5);
+  }
   for (const video of catalogue.TRAINING_VIDEOS) {
     assert.match(video.url, new RegExp(`^https://www\\.youtube\\.com/watch\\?v=${video.videoId}$`));
     assert.ok(video.title.length > 0);
