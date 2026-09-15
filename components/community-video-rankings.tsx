@@ -15,7 +15,7 @@ type RankingResponse = { videos: CommunityTrainingVideo[]; count: number; aiCoun
 
 export function CommunityVideoRankings() {
   const { request, snapshot } = useAccount();
-  const [data, setData] = useState<RankingResponse>({ videos: [], count: 0, aiCount: 9, limit: 300 });
+  const [data, setData] = useState<RankingResponse>({ videos: [], count: 0, aiCount: 17, limit: 300 });
   const [mode, setMode] = useState<"all" | "aim" | "tactics">("all");
   const [expanded, setExpanded] = useState(false);
   const [formOpen, setFormOpen] = useState(false);

@@ -36,7 +36,7 @@ export function TrainingVideoList({ videos, compact = false, preloadFirst = fals
             </a>
             <div className="training-video-copy">
               <div className="training-video-meta">
-                <strong>{compact ? `#${index + 1}` : video.targetRank}</strong>
+                <strong>#{index + 1}</strong>
                 <span>{video.level}</span>
                 <small>{video.creator}</small>
               </div>

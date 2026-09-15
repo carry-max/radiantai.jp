@@ -27,9 +27,9 @@ export default function GuidesPage() {
         <PageLead
           eyebrow="TRAINING LIBRARY"
           title="ランク別 VALORANTおすすめ動画"
-          description="今のランクで優先したい学習テーマを、アイアンからレディアントまで順番にまとめました。各ランクの1本から始め、次のランクの内容へ進めます。"
+          description="今のランクで優先したい日本語動画を、アイアンからレディアントまでおすすめ順に5本ずつまとめました。1位から順番に取り組めます。"
         />
-        <div className="ai-ranking-label"><strong>9ランクの学習ロードマップ</strong><span>基礎 → AIM → 撃ち合い → 判断 → マクロの順で選定</span></div>
+        <div className="ai-ranking-label"><strong>ランク別おすすめ TOP 5</strong><span>各ランクの課題への効果と、練習へ移しやすい順番で選定</span></div>
         <nav className="rank-guide-nav" aria-label="VALORANTランク別動画">
           {VALORANT_RANKS.map((rank) => <a key={rank} href={`#${rankId(rank)}`}>{rank}<ChevronRight /></a>)}
         </nav>
@@ -45,7 +45,7 @@ export default function GuidesPage() {
             </section>
           ))}
         </div>
-        <p className="guide-source-note">おすすめ動画は、各ランクで優先したい課題と次のランクへ進むための学習順を基準に選定しています。</p>
+        <p className="guide-source-note">順位は、各ランクで優先したい課題との関連性と、次の試合で実践しやすい学習順を基準にしています。同じ基礎動画を複数ランクで紹介する場合があります。</p>
         <CommunityVideoRankings />
       </main>
       <footer className="portal-footer"><span>RADIANT REVIEW</span><nav><a href="/privacy">データの取り扱い</a><a href="/legal">販売条件・運営情報</a></nav></footer>
