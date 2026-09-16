@@ -1,7 +1,7 @@
 import { MONTHLY_PLAN_SCHEMA, verifiedMonthlyCheck } from "@/lib/monthly-missions";
 import { getMissionDb, prepareMonthlyReview, saveMonthlyReview, type MonthlyContext, type MissionDatabase } from "@/lib/monthly-store";
 import { getSiteUser, withAuth } from "@/lib/site-user";
-import { serviceConfig, sameOriginRequest } from "@/lib/service-config";
+import { riotRsoConfigured, serviceConfig, sameOriginRequest } from "@/lib/service-config";
 import { getEntitlement } from "@/lib/billing";
 import { AccessError, reserveAnalysis, completeAnalysis, failAnalysis, getAnalysisAllowance, type Reservation } from "@/lib/analysis-access";
 import { z } from "zod";
@@ -9,6 +9,8 @@ import { SKILL_ASSESSMENT_SCHEMA, SKILL_ASSESSMENT_INSTRUCTIONS, verifiedSkillRa
 import { saveAiGrowth } from "@/lib/player-growth-store";
 import { AIM_COACH_INSTRUCTIONS, AIM_OUTPUT_LIMIT, ROUND_COACH_INSTRUCTIONS, ROUND_OUTPUT_LIMIT, analysisSceneKey, validAimSequence, validRoundSequence, type ReviewMode, type AimCrop } from "@/lib/review-modes";
 import { requestVideoAnalysis } from "@/lib/video-analysis-client";
+import { getRiotConnection } from "@/lib/riot-auth";
+import { accessKindForReview, isTacticsCoach, type TacticsCoach } from "@/lib/tactics-coaches";
 
 const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
 export const maxDuration = 60;
@@ -144,6 +146,8 @@ const validatedRoundReviewSchema = validatedReviewSchema.extend({
 
 type AnalyzeBody = {
   mode?: unknown;
+  tacticsCoach?: unknown;
+  clientKind?: unknown;
   aimCrop?: unknown;
   apiKey?: unknown;
   model?: unknown;
@@ -280,9 +284,19 @@ async function postHandler(request: Request) {
     const body = await readAnalyzeBody(request);
     if (body.mode !== undefined && body.mode !== "tactics" && body.mode !== "aim" && body.mode !== "round") throw new RequestError("解析モードを選び直してください。");
     const mode: ReviewMode = body.mode === "aim" ? "aim" : body.mode === "round" ? "round" : "tactics";
+    if (body.tacticsCoach !== undefined && !isTacticsCoach(body.tacticsCoach)) throw new RequestError("立ち回りコーチを選び直してください。");
+    const tacticsCoach: TacticsCoach | undefined = mode === "aim" ? undefined : isTacticsCoach(body.tacticsCoach) ? body.tacticsCoach : mode === "round" ? "deep" : "replay";
+    if ((tacticsCoach === "deep") !== (mode === "round")) throw new RequestError("選んだコーチと解析範囲が一致しません。もう一度選び直してください。");
     if (mode === "aim" && body.aimCrop !== undefined && body.aimCrop !== "center" && body.aimCrop !== "full") throw new RequestError("AIMの切り出し範囲を選び直してください。");
     const aimCrop: AimCrop = body.aimCrop === "full" ? "full" : "center";
     const config = serviceConfig();
+    const user = await getSiteUser(request);
+    if (tacticsCoach === "riot") {
+      if (!config.riotApproved || !riotRsoConfigured()) throw new AccessError("Riot AIは公式承認後に利用できます。現在は申請準備中です。", 503);
+      if (!user) throw new AccessError("Riot AIにはログインとRiotアカウント連携が必要です。", 401);
+      if (body.clientKind !== "windows-app") throw new AccessError("Riot AIはWindowsにインストールしたRadiant AIアプリから利用してください。", 403);
+      if (!await getRiotConnection(getMissionDb(), user.id)) throw new AccessError("アカウント画面でRiotアカウントを連携してから利用してください。", 403);
+    }
     const personalKey = cleanText(body.apiKey, 300);
     const apiKey = personalKey || config.apiKey;
     const model = personalKey ? cleanText(body.model, 60) || "gpt-5.6-luna" : config.model;
@@ -294,7 +308,6 @@ async function postHandler(request: Request) {
     if (mode === "round" && !validRoundSequence(frames.map(frame => frame.time), body.roundStart, body.deathTimestamp)) throw new RequestError("ラウンド開始と終了を指定し、ラウンド全体を切り出し直してください。");
     const metadata = cleanMetadata(body.metadata);
     const previousMission = mode === "tactics" ? cleanText(body.previousMission, 320) : "";
-    const user = await getSiteUser(request);
     const recordingId = cleanText(body.recordingId, 64);
     if (!personalKey) {
       if (!user) return json({ ok: false, error: "無料体験・プランの解析にはログインが必要です。" }, 401);
@@ -303,7 +316,8 @@ async function postHandler(request: Request) {
       if (typeof deathTime !== "number" || !Number.isFinite(deathTime) || deathTime < 0 || deathTime > 3600) throw new RequestError("場面の時刻を確認してください。");
       if (frames.some(frame => frame.time === null)) throw new RequestError("フレームの時刻を確認できませんでした。もう一度切り出してください。");
       const roundStart = mode === "round" && typeof body.roundStart === "number" ? body.roundStart : 0;
-      const result = await reserveAnalysis(getMissionDb(), user.id, await getEntitlement(user.id), recordingId, analysisSceneKey(mode, deathTime, aimCrop, roundStart));
+      const sceneKey = analysisSceneKey(mode, deathTime, aimCrop, roundStart);
+      const result = await reserveAnalysis(getMissionDb(), user.id, await getEntitlement(user.id), recordingId, tacticsCoach ? `${tacticsCoach}:${sceneKey}` : sceneKey, Date.now(), accessKindForReview(mode, tacticsCoach));
       reservation = result.reservation;
       if (result.cached) {
         const cachedRatings = verifiedSkillRatings(result.cached.review?.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), result.cached.review?.status === "ok", mode);
@@ -419,9 +433,9 @@ async function postHandler(request: Request) {
         monthlyResult = { monthlySaved: false, xpAwarded: 0, monthlyNotice: "レビューは完了しましたが、月間ミッションを保存できませんでした。進捗を再読み込みして確認してください。" };
       }
     }
-    const growthAnalysisId = reservation?.id || (user && /^[a-f0-9]{64}$/.test(recordingId) ? `personal:${recordingId}:${analysisSceneKey(mode, Number(body.deathTimestamp) || 0, aimCrop, mode === "round" && typeof body.roundStart === "number" ? body.roundStart : 0)}` : null);
+    const growthAnalysisId = reservation?.id || (user && /^[a-f0-9]{64}$/.test(recordingId) ? `personal:${recordingId}:${tacticsCoach ? `${tacticsCoach}:` : ""}${analysisSceneKey(mode, Number(body.deathTimestamp) || 0, aimCrop, mode === "round" && typeof body.roundStart === "number" ? body.roundStart : 0)}` : null);
     const usage = upstreamBody.usage && typeof upstreamBody.usage === "object" ? upstreamBody.usage as Record<string, unknown> : {};
-    const payload = { ok: true, review, model: cleanText(upstreamBody.model, 80) || model, usage: { ...usage, review_mode: mode, input_images: frames.length }, analysisId: reservation?.id || null, growthNotice: "", ...monthlyResult };
+    const payload = { ok: true, review, model: cleanText(upstreamBody.model, 80) || model, usage: { ...usage, review_mode: mode, tactics_coach: tacticsCoach, input_images: frames.length }, analysisId: reservation?.id || null, growthNotice: "", ...monthlyResult };
     if (reservation) {
       await completeAnalysis(reservation, { ok: true, review, model: payload.model }, review.status === "ok", payload.usage);
       reservation = null;

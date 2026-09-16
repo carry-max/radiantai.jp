@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AccountProvider } from "@/components/account-provider";
+import { WindowsAppRegistration } from "@/components/windows-app-registration";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://radiantai.jp"),
@@ -14,6 +15,7 @@ export const metadata: Metadata = {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
+  manifest: "/manifest.webmanifest",
 };
 
 export default function RootLayout({
@@ -23,7 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
-      <body className="antialiased"><AccountProvider>{children}</AccountProvider></body>
+      <body className="antialiased"><WindowsAppRegistration /><AccountProvider>{children}</AccountProvider></body>
     </html>
   );
 }

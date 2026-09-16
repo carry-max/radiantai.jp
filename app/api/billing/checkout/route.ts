@@ -47,8 +47,8 @@ async function postHandler(request: Request) {
   params.set("line_items[0][price_data][tax_behavior]", "inclusive");
   params.set("line_items[0][price_data][product_data][name]", planDetails.productName);
   params.set("line_items[0][price_data][product_data][description]", payPay
-    ? `AI費用込み・${planDetails.analysisCredits}試合×最大3場面・${PAYPAY_ACCESS_DAYS}日・自動更新なし・未使用枠繰越なし`
-    : `AI費用込み・毎月${planDetails.analysisCredits}試合×最大3場面・自動更新・いつでも更新停止・未使用枠繰越なし`);
+    ? `立ち回り50/5/2試合＋AIM${planDetails.analysisCredits}試合・各最大3解析・${PAYPAY_ACCESS_DAYS}日・自動更新なし`
+    : `立ち回り50/5/2試合＋AIM${planDetails.analysisCredits}試合・各最大3解析・毎月自動更新`);
   params.set("custom_text[submit][message]", "1日12回まで。失敗・判定保留は試合枠を消費しません。購入後のお客様都合の返金はありません。サービス未提供等は販売条件に従います。");
   if (!payPay) params.set("line_items[0][price_data][recurring][interval]", "month");
   params.set("metadata[user_id]", user.id);

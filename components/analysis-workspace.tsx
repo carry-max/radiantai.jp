@@ -73,6 +73,7 @@ import type { AnalysisAllowance } from "@/lib/analysis-access";
 import { fingerprintRecording, monthlyPhase, type MonthlySummary } from "@/lib/monthly-missions";
 import { TrainingVideoList } from "@/components/training-video-list";
 import { recommendTrainingVideos } from "@/lib/training-videos";
+import { coachMode, type TacticsCoach } from "@/lib/tactics-coaches";
 import {
   type DeathCandidate,
   type DeathDetectionSample,
@@ -81,6 +82,10 @@ import {
 } from "@/lib/death-detection";
 
 type Frame = { label: string; time: number; dataUrl: string };
+type InstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
 
 type MissionCheckStatus = "cleared" | "improving" | "not_cleared" | "insufficient" | "not_applicable";
 
@@ -341,6 +346,7 @@ function SectionHeading({ step, eyebrow, title, trailing }: { step: string; eyeb
 
 export function AnalysisWorkspace() {
   const [reviewMode, setReviewMode] = useState<ReviewMode>("tactics");
+  const [tacticsCoach, setTacticsCoach] = useState<TacticsCoach>("replay");
   const [aimCrop, setAimCrop] = useState<AimCrop>("center");
   const captureRunRef = useRef(0);
   const account = useAccount();
@@ -404,6 +410,9 @@ export function AnalysisWorkspace() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [isReviewPlaying, setIsReviewPlaying] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isWindows, setIsWindows] = useState(false);
+  const [isWindowsApp, setIsWindowsApp] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [status, setStatus] = useState({ message: "録画を選ぶとレビューを開始できます。", tone: "neutral" as "neutral" | "success" | "error" });
   const [map, setMap] = useState("");
   const [agent, setAgent] = useState("");
@@ -449,6 +458,24 @@ export function AnalysisWorkspace() {
     const start = window.setTimeout(() => void reloadAllowance(), 0);
     return () => window.clearTimeout(start);
   }, [reloadAllowance]);
+
+  useEffect(() => {
+    const displayMode = window.matchMedia("(display-mode: standalone)");
+    const syncPlatform = () => {
+      setIsWindows(/Windows/i.test(navigator.userAgent));
+      setIsWindowsApp(displayMode.matches);
+    };
+    const installable = (event: Event) => { event.preventDefault(); setInstallPrompt(event as InstallPromptEvent); };
+    syncPlatform();
+    displayMode.addEventListener("change", syncPlatform);
+    window.addEventListener("beforeinstallprompt", installable);
+    window.addEventListener("appinstalled", syncPlatform);
+    return () => {
+      displayMode.removeEventListener("change", syncPlatform);
+      window.removeEventListener("beforeinstallprompt", installable);
+      window.removeEventListener("appinstalled", syncPlatform);
+    };
+  }, []);
 
   useEffect(() => {
     const start = window.setTimeout(() => void reloadMonthly(), 0);
@@ -935,15 +962,28 @@ export function AnalysisWorkspace() {
     window.setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
   }, [matchId, saveHistory]);
 
-  const changeReviewMode = (nextMode: ReviewMode, crop: AimCrop = aimCrop) => {
+  const changeReviewMode = (nextMode: ReviewMode, crop: AimCrop = aimCrop, force = false) => {
     if (isAnalyzing || isCapturing || isDetectingDeaths) return;
-    if (nextMode === reviewMode && crop === aimCrop) return;
+    if (!force && nextMode === reviewMode && crop === aimCrop) return;
     videoRef.current?.pause(); reviewEndRef.current = null; setIsReviewPlaying(false);
     captureRunRef.current++; analysisRunRef.current++;
     setReviewMode(nextMode); setAimCrop(crop); setFrames([]); setReview(null);
     setRoundStart(null); setRoundEnd(null);
     setAnalysisId(""); setIsDemo(false); setFeedbackNotice(""); setSelectedDeathId(""); setSelectedTags([]);
     setStatus({ message: nextMode === "aim" ? "撃ち始め付近で動画を停止し、AIMの6枚を切り出してください。" : nextMode === "round" ? "動画上でラウンド開始と終了を指定してください。" : "デス候補を選ぶか、現在時刻を追加してください。", tone: "neutral" });
+  };
+
+  const selectTacticsCoach = (coach: TacticsCoach) => {
+    if (coach === tacticsCoach && coachMode(coach) === reviewMode) return;
+    setTacticsCoach(coach);
+    changeReviewMode(coachMode(coach), aimCrop, true);
+  };
+
+  const installWindowsApp = async () => {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === "accepted") setInstallPrompt(null);
   };
 
   const analyze = async () => {
@@ -955,6 +995,20 @@ export function AnalysisWorkspace() {
     if (!apiKey.trim() && !serviceReady) {
       setStatus({ message: "AIレビューは準備中です。録画の切り出しとサンプルをお試しください。", tone: "neutral" });
       return;
+    }
+    if (tacticsCoach === "riot" && reviewMode !== "aim") {
+      if (!account.snapshot?.riot.configured) {
+        setStatus({ message: "Riot AIは公式承認とRSO設定の完了後に利用できます。", tone: "error" });
+        return;
+      }
+      if (!account.snapshot.riot.connection) {
+        setStatus({ message: "先にアカウント画面でRiotアカウントを連携してください。", tone: "error" });
+        return;
+      }
+      if (!isWindows || !isWindowsApp) {
+        setStatus({ message: "Riot AIはWindowsにインストールしたRadiant AIアプリから利用してください。", tone: "error" });
+        return;
+      }
     }
     const file = recordingFileRef.current;
     if (!file) return;
@@ -970,7 +1024,7 @@ export function AnalysisWorkspace() {
       const response = await accountFetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...(apiKey.trim() ? { apiKey: apiKey.trim(), model } : {}), mode: reviewMode, aimCrop, deathTimestamp, ...(reviewMode === "round" ? { roundStart } : {}), metadata: matchContext, previousMission, monthlyTracking: reviewMode === "tactics", recordingId: nextRecordingId, renewMonthly, frames: frames.map(({ label, dataUrl, time }) => ({ label, dataUrl, time })) }),
+        body: JSON.stringify({ ...(apiKey.trim() ? { apiKey: apiKey.trim(), model } : {}), mode: reviewMode, tacticsCoach: reviewMode === "aim" ? undefined : tacticsCoach, clientKind: isWindowsApp && isWindows ? "windows-app" : "web", aimCrop, deathTimestamp, ...(reviewMode === "round" ? { roundStart } : {}), metadata: matchContext, previousMission, monthlyTracking: reviewMode === "tactics", recordingId: nextRecordingId, renewMonthly, frames: frames.map(({ label, dataUrl, time }) => ({ label, dataUrl, time })) }),
       });
       const data = (await response.json()) as { ok?: boolean; error?: string; review?: Review; model?: string; monthly?: MonthlySummary; monthlyNotice?: string; xpAwarded?: number; monthlySaved?: boolean; analysisId?: string; cached?: boolean; growthNotice?: string };
       if (!response.ok || !data.ok || !data.review) throw new Error(data.error || "AI解析に失敗しました。");
@@ -1178,7 +1232,9 @@ export function AnalysisWorkspace() {
     } catch (error) { setBillingNotice({ tone: "error", message: error instanceof Error ? error.message : "更新停止を確認できませんでした。" }); }
     finally { setCancelBusy(false); }
   };
-  const currentScenes = allowance?.recordings.find(item => item.recordingId === recordingId)?.scenesUsed || 0;
+  const currentAllowance = reviewMode === "aim" ? allowance : allowance?.tactics?.[tacticsCoach];
+  const currentScenes = currentAllowance?.recordings.find(item => item.recordingId === recordingId)?.scenesUsed || 0;
+  const riotReady = Boolean(account.snapshot?.riot.configured && account.snapshot.riot.connection && isWindows && isWindowsApp);
   const pendingPrice = pendingPlan?.startsWith("climb_") ? 1800 : 900;
   const pendingMatches = pendingPlan?.startsWith("climb_") ? 10 : 5;
 
@@ -1214,16 +1270,21 @@ export function AnalysisWorkspace() {
 
         <section className="review-mode-bar" aria-label="解析モード">
           <div className="review-mode-switch" role="group" aria-label="目的を選ぶ">
-            <div className="review-mode-family"><span>個人レビュー</span><div className="review-mode-options">
-              <button type="button" aria-pressed={reviewMode === "tactics"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => changeReviewMode("tactics")}><MapPinned /><span><strong>デス原因</strong><small>判断・位置取り</small></span></button>
-              <button type="button" aria-pressed={reviewMode === "aim"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => changeReviewMode("aim")}><Crosshair /><span><strong>AIM</strong><small>照準・修正</small></span></button>
+            <div className="review-mode-family tactics-coach-family"><span>立ち回りモード</span><div className="review-mode-options tactics-coach-options">
+              <button type="button" aria-pressed={reviewMode !== "aim" && tacticsCoach === "riot"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => selectTacticsCoach("riot")}><Zap /><span><strong>Riot AI <em>50試合</em></strong><small>Riot連携＋Windowsアプリ</small></span></button>
+              <button type="button" aria-pressed={reviewMode !== "aim" && tacticsCoach === "replay"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => selectTacticsCoach("replay")}><MapPinned /><span><strong>Replay Coach <em>5試合</em></strong><small>デス原因・判断・位置取り</small></span></button>
+              <button type="button" aria-pressed={reviewMode !== "aim" && tacticsCoach === "deep"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => selectTacticsCoach("deep")}><UsersRound /><span><strong>Deep Coach <em>2試合</em></strong><small>配置・情報・ローテ・敗因</small></span></button>
             </div></div>
-            <div className="review-mode-family"><span>ラウンドレビュー</span><div className="review-mode-options single">
-              <button type="button" aria-pressed={reviewMode === "round"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => changeReviewMode("round")}><UsersRound /><span><strong>ラウンド全体</strong><small>配置・情報・ローテ・敗因</small></span></button>
+            <div className="review-mode-family"><span>AIMモード</span><div className="review-mode-options single">
+              <button type="button" aria-pressed={reviewMode === "aim"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => changeReviewMode("aim")}><Crosshair /><span><strong>AIMレビュー</strong><small>従来のプラン枠を維持</small></span></button>
             </div></div>
           </div>
-          <div className="review-mode-price"><Badge variant="outline">全モード同料金</Badge><p>1試合で合計3解析。デス原因・AIM・ラウンド全体へ自由に配分できます。</p><small>別モード・切り出し範囲を変えた解析はそれぞれ1回分。保存済み結果の再表示は消費しません。</small></div>
+          <div className="review-mode-price"><Badge variant="outline">料金はそのまま</Badge><p>立ち回りだけ専用枠へ変更。Riot AI 50試合・Replay Coach 5試合・Deep Coach 2試合です。</p><small>AIMは現在のプラン枠を維持します。各試合は最大3解析、保存済み結果の再表示は消費しません。</small></div>
         </section>
+        {reviewMode !== "aim" && tacticsCoach === "riot" ? <section className={`riot-ai-gate ${riotReady ? "ready" : "pending"}`} aria-live="polite">
+          <div><Zap /><span><strong>Riot AI / 最大50試合</strong><small>{riotReady ? `${account.snapshot?.riot.connection?.displayName}・Windowsアプリから利用できます` : !account.snapshot?.riot.configured ? "Riot公式承認後にRSOを有効化します" : !account.snapshot.riot.connection ? "Riotアカウント連携が必要です" : !isWindows ? "Windows版が必要です" : "Windowsへアプリをインストールして起動してください"}</small></span></div>
+          {!account.snapshot?.riot.connection ? <Button asChild variant="outline"><Link href="/account">Riot連携を設定</Link></Button> : !isWindowsApp && installPrompt ? <Button type="button" variant="outline" onClick={() => void installWindowsApp()}><MonitorUp /> Windowsにインストール</Button> : !isWindowsApp ? <span className="riot-install-help">Edge / Chromeのメニューから「アプリをインストール」を選択</span> : <Badge>{riotReady ? "利用可能" : "設定待ち"}</Badge>}
+        </section> : null}
         <section className="pipeline" aria-label="処理の流れ">
           <div><span className="pipeline-icon"><Play /></span><p><small>01 / LOCAL</small><strong>録画を選択</strong></p></div>
           <div><span className="pipeline-icon"><ScanLine /></span><p><small>02 / {reviewMode === "aim" ? "SELECT MOMENT" : reviewMode === "round" ? "SELECT ROUND" : "AUTO DETECT"}</small><strong>{reviewMode === "aim" ? "撃ち始め付近で停止" : reviewMode === "round" ? "開始と終了を指定" : "デスを自動検出"}</strong></p></div>
@@ -1365,8 +1426,8 @@ export function AnalysisWorkspace() {
           <aside className="secondary-column">
             <section className="panel context-panel">
               <div className="allowance-box" aria-live="polite">
-                <strong>{apiKey.trim() ? "自分のAPIキーで解析 · 別料金" : !serviceReady ? "AIレビューは準備中" : allowance ? `${allowance.tier} · 新しい試合の残り枠 ${allowance.remaining} / ${allowance.limit}` : "解析にはログインが必要です"}</strong>
-                <p>{apiKey.trim() ? "API料金はご自身のOpenAIアカウントに発生します。プランの試合枠は使いません。" : serviceReady ? `1試合につき両モード合計3解析。${recordingId ? `この録画は${currentScenes} / 3場面を解析済み。` : "無料体験は1アカウント1試合です。"}` : "録画の切り出しとサンプルは利用できます。購入・請求はありません。"}</p>
+                <strong>{apiKey.trim() ? "自分のAPIキーで解析 · 別料金" : !serviceReady ? "AIレビューは準備中" : currentAllowance ? `${currentAllowance.tier} · ${reviewMode === "aim" ? "AIM" : tacticsCoach === "riot" ? "Riot AI" : tacticsCoach === "replay" ? "Replay Coach" : "Deep Coach"} 残り ${currentAllowance.remaining} / ${currentAllowance.limit}試合` : "解析にはログインが必要です"}</strong>
+                <p>{apiKey.trim() ? "API料金はご自身のOpenAIアカウントに発生します。プランの試合枠は使いません。" : serviceReady ? `このモードでは1試合につき最大3解析。${recordingId ? `この録画は${currentScenes} / 3場面を解析済み。` : currentAllowance?.tier === "無料体験" ? "無料体験は全モード合計で1アカウント1試合です。" : "立ち回り3種類はそれぞれ専用枠です。"}` : "録画の切り出しとサンプルは利用できます。購入・請求はありません。"}</p>
                 {allowanceError ? <p role="alert">{allowanceError}</p> : null}
                 <Button variant="ghost" size="sm" onClick={() => void reloadAllowance()}><RotateCcw /> 利用状況を更新</Button>
                 {serviceReady && !signedIn ? <a href="/login" target="_top">ログインして無料体験</a> : null}
@@ -1390,7 +1451,7 @@ export function AnalysisWorkspace() {
               <div className={`status-line ${status.tone}`} role="status" aria-live="polite">
                 {status.tone === "error" ? <AlertTriangle /> : status.tone === "success" ? <CheckCircle2 /> : <Clock3 />}<span>{status.message}</span>
               </div>
-              <Button type="button" size="lg" disabled={!reviewReady || isAnalyzing || (!apiKey.trim() && (!serviceReady || !signedIn || Boolean(allowanceError)))} onClick={() => void analyze()} className="analyze-button">
+              <Button type="button" size="lg" disabled={!reviewReady || isAnalyzing || (reviewMode !== "aim" && tacticsCoach === "riot" && !riotReady) || (!apiKey.trim() && (!serviceReady || !signedIn || Boolean(allowanceError)))} onClick={() => void analyze()} className="analyze-button">
                 {isAnalyzing ? <LoaderCircle className="spin" /> : <Sparkles />}{isAnalyzing ? "AI解析中…" : reviewMode === "round" ? "このラウンドをレビュー" : "この場面の改善点を確認"}
               </Button>
               <Button type="button" variant="ghost" disabled={isAnalyzing} onClick={() => finishReview(demoReview(selectedTags[0], reviewMode), "demo", "デモレビューを表示しました。月間ミッション・XPは変更されません。")} className="demo-button"><Play /> サンプルレビューを見る</Button>

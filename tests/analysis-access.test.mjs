@@ -44,8 +44,8 @@ function database() {
     },
   };
 }
-async function succeed(db, user, recording, scene, entitlement = null) {
-  const reserved = await access.reserveAnalysis(db, user, entitlement, recording, scene);
+async function succeed(db, user, recording, scene, entitlement = null, accessKind = "standard") {
+  const reserved = await access.reserveAnalysis(db, user, entitlement, recording, scene, Date.now(), accessKind);
   if (reserved.reservation) await access.completeAnalysis(reserved.reservation, { ok: true, review: { headline: "根拠あり" } }, true, { input_tokens: 200 });
   return reserved;
 }
@@ -88,6 +88,22 @@ test("paid quotas renew with the billing period, expired/future access cannot gr
   assert.equal(access.analysisPeriod({...entitlement, endsAt: new Date(now-1).toISOString()}).limit, 1);
   assert.equal(access.analysisPeriod({...entitlement, startsAt: new Date(now+1000).toISOString()}).limit, 1);
   assert.equal(access.analysisPeriod({...entitlement, plan:"climb_card_monthly"}).limit, 10);
+  db.sqlite.close();
+});
+test("paid tactics coaches have independent 50, 5 and 2 match buckets while AIM keeps its plan limit", async () => {
+  const db = database(); const now = Date.now();
+  const entitlement = { plan: "card_monthly", status: "active", startsAt: new Date(now-1000).toISOString(), endsAt: new Date(now+86400000).toISOString(), remainingDays: 1 };
+  assert.equal(access.analysisPeriod(entitlement, now, "standard").limit, 5);
+  assert.equal(access.analysisPeriod(entitlement, now, "tactics:riot").limit, 50);
+  assert.equal(access.analysisPeriod(entitlement, now, "tactics:replay").limit, 5);
+  assert.equal(access.analysisPeriod(entitlement, now, "tactics:deep").limit, 2);
+  await succeed(db, "a", "same-match", "aim:1", entitlement, "standard");
+  await succeed(db, "a", "same-match", "replay:1", entitlement, "tactics:replay");
+  await succeed(db, "a", "same-match", "deep:1", entitlement, "tactics:deep");
+  assert.equal((await access.readAllowance(db, "a", entitlement)).used, 1);
+  assert.equal((await access.readAllowance(db, "a", entitlement, "tactics:replay")).remaining, 4);
+  assert.equal((await access.readAllowance(db, "a", entitlement, "tactics:deep")).remaining, 1);
+  assert.equal((await access.readAllowance(db, "a", entitlement, "tactics:riot")).remaining, 50);
   db.sqlite.close();
 });
 test("daily attempt and service budget limits also cover failures", async () => {
