@@ -65,9 +65,17 @@ GitHubの`carry-max/radiantai.jp`をImportし、Framework PresetをNext.js、Pro
 | `STRIPE_WEBHOOK_SECRET` | Sensitive | Billing Webhook Signing secret |
 | `PAYPAY_ENABLED` | Server | 利用確認後に`true` |
 | `RIOT_PRODUCT_APPROVED` | Server | Riotの承認確認後に`true` |
+| `RIOT_RSO_CLIENT_ID` | Server | 承認後に発行されるRSO Client ID |
+| `RIOT_RSO_CLIENT_SECRET` | Sensitive | 承認後に発行されるRSO Client Secret |
+| `RIOT_RSO_AUTHORIZE_URL` | Server | Riotから案内される認可URL |
+| `RIOT_RSO_TOKEN_URL` | Server | Riotから案内されるトークンURL |
+| `RIOT_RSO_USERINFO_URL` | Server | Riotから案内されるユーザー情報URL |
+| `RIOT_RSO_SCOPES` | Server | Riotから承認されたscope。初期値は`openid` |
 | `MERCHANT_*`、`SUPPORT_EMAIL` | Server | 特定商取引法表示の実情報 |
 
 運営用`OPENAI_API_KEY`はRailwayだけへ置き、Vercelへ重複保存しません。環境変数を変更した後は再デプロイします。
+
+Riot連携のコールバックURLは`https://radiantai.jp/auth/riot/callback`です。VALORANTの個人データ連携にはProduction KeyとRSO承認が必要なため、申請前は`RIOT_PRODUCT_APPROVED=false`のままにします。Development KeyやPersonal Keyで公開機能を有効化しません。
 
 ## 4. 公開確認
 

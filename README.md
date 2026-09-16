@@ -58,6 +58,7 @@ APIはapp/api/、認証はapp/auth/、画面別metadataは各layout.tsxにあり
 .env.exampleを参照し、実際の値を.env.localまたはホスト側で設定します。
 
 - Supabase：`NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`、`AUTH_SITE_URL`。Google/Xを有効にし、`https://radiantai.jp/auth/callback`をSupabaseの許可済みリダイレクトURLへ追加します。新しいpublishable keyを使う場合は`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`にも対応しています。
+- Riot：公開後にProduction KeyとRiot Sign Onを申請します。承認前は連携ボタンを無効化し、Development KeyやPersonal Keyで公開しません。承認後のCallback URLは`https://radiantai.jp/auth/riot/callback`です。
 - AI解析：Railwayへ`OPENAI_API_KEY`、両サービスへ同じ`VIDEO_ANALYSIS_BACKEND_TOKEN`を設定します。キーをブラウザ公開用の変数にしないでください。
 - 決済：Stripeのキー・Webhookシークレット、販売者情報など既存の条件を設定します。Webhook送信先は`https://radiantai.jp/api/billing/webhook`です。
 - 設定がない場合は画面を閲覧できますが、認証や有料機能は利用可能になりません。

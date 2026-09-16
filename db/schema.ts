@@ -7,6 +7,13 @@ export const authAccounts = sqliteTable("auth_accounts", {
   lockedAt: text("locked_at"),
 });
 
+export const riotConnections = sqliteTable("riot_connections", {
+  userId: text("user_id").primaryKey(),
+  riotSubject: text("riot_subject").notNull().unique(),
+  displayName: text("display_name").notNull().default("Riotプレイヤー"),
+  linkedAt: text("linked_at").notNull(),
+});
+
 export const billingEntitlements = sqliteTable("billing_entitlements", {
   userId: text("user_id").primaryKey(),
   email: text("email").notNull().default(""),

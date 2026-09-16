@@ -117,6 +117,13 @@ CREATE TABLE IF NOT EXISTS auth_accounts (
   locked_at text
 );
 CREATE UNIQUE INDEX IF NOT EXISTS auth_accounts_user_id_unique ON auth_accounts (user_id);
+CREATE TABLE IF NOT EXISTS riot_connections (
+  user_id text PRIMARY KEY,
+  riot_subject text NOT NULL UNIQUE,
+  display_name text NOT NULL DEFAULT 'Riotプレイヤー',
+  linked_at text NOT NULL
+);
+ALTER TABLE riot_connections ENABLE ROW LEVEL SECURITY;
 `;
 
 export function postgresPlaceholders(query: string) {

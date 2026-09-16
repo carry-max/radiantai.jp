@@ -9,6 +9,7 @@ type Statement = {
   bind(...values: (string | number | null)[]): Statement;
   first<T>(): Promise<T | null>;
   all<T>(): Promise<{ results: T[] }>;
+  run(): Promise<unknown>;
 };
 export type MissionDatabase = { prepare(sql: string): Statement; batch(statements: Statement[]): Promise<unknown> };
 type CycleRow = { id: string; started_at: string; ends_at: string; baseline_focus: string; tasks_json: string; current_step: number; xp: number };

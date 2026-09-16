@@ -21,6 +21,8 @@ const startRoute = await vite.ssrLoadModule("/app/auth/start/route.ts");
 const callbackRoute = await vite.ssrLoadModule("/app/auth/callback/route.ts");
 const signoutRoute = await vite.ssrLoadModule("/app/auth/signout/route.ts");
 const importRoute = await vite.ssrLoadModule("/app/auth/import-history/route.ts");
+const riotAuth = await vite.ssrLoadModule("/lib/riot-auth.ts");
+const riotStartRoute = await vite.ssrLoadModule("/app/auth/riot/start/route.ts");
 const missionsRoute = await vite.ssrLoadModule("/app/api/missions/route.ts");
 const growthRoute = await vite.ssrLoadModule("/app/api/player-growth/route.ts");
 const migrations = await Promise.all((await readdir(new URL("../drizzle/", import.meta.url))).filter(name => name.endsWith(".sql")).sort().map(name => readFile(new URL(`../drizzle/${name}`, import.meta.url), "utf8")));
@@ -250,6 +252,35 @@ test("partial or unsafe configuration fails closed; absent configuration preserv
   delete globalThis.__AUTH_TEST_ENV__.SUPABASE_PUBLISHABLE_KEY; delete globalThis.__AUTH_TEST_ENV__.SUPABASE_URL;
   const current = await (await sessionRoute.GET(request("/auth/session", { legacy: "owner" }))).json();
   assert.equal(current.mode, "chatgpt"); assert.equal(current.user.id, "owner"); assert.equal(current.configured, false);
+});
+
+test("Riot RSO stays closed before approval and starts a server-side PKCE flow after configuration", async () => {
+  const sessionCookie = cookie(makeSession(a));
+  const current = await (await sessionRoute.GET(request("/auth/session", { cookie: sessionCookie }))).json();
+  const pending = await riotStartRoute.POST(form("/auth/riot/start", { account: current.user.id }, { cookie: sessionCookie }));
+  assert.match(pending.headers.get("Location"), /status=riot-pending/);
+  Object.assign(globalThis.__AUTH_TEST_ENV__, {
+    RIOT_PRODUCT_APPROVED: "true",
+    RIOT_RSO_CLIENT_ID: "riot-client",
+    RIOT_RSO_CLIENT_SECRET: "server-secret",
+    RIOT_RSO_AUTHORIZE_URL: "https://auth.riotgames.test/authorize",
+    RIOT_RSO_TOKEN_URL: "https://auth.riotgames.test/token",
+    RIOT_RSO_USERINFO_URL: "https://auth.riotgames.test/userinfo",
+    RIOT_RSO_SCOPES: "openid",
+  });
+  assert.ok(await riotAuth.startRiotFlow(current.user.id));
+  const started = await riotStartRoute.POST(form("/auth/riot/start", { account: current.user.id }, { cookie: sessionCookie }));
+  assert.equal(started.status, 303, await started.clone().text());
+  const destination = new URL(started.headers.get("Location"));
+  assert.equal(destination.origin, "https://auth.riotgames.test");
+  assert.equal(destination.searchParams.get("client_id"), "riot-client");
+  assert.equal(destination.searchParams.get("redirect_uri"), `${origin}/auth/riot/callback`);
+  assert.equal(destination.searchParams.get("code_challenge_method"), "S256");
+  assert.ok(destination.searchParams.get("state"));
+  assert.ok(destination.searchParams.get("code_challenge"));
+  const flowCookie = started.headers.getSetCookie().find(value => value.includes("rr-riot-flow="));
+  assert.match(flowCookie, /HttpOnly/); assert.match(flowCookie, /Secure/); assert.match(flowCookie, /SameSite=Lax/i); assert.match(flowCookie, /Max-Age=600/);
+  assert.doesNotMatch(flowCookie, /server-secret/);
 });
 
 test("standard Next.js public Supabase variables configure authentication", () => {

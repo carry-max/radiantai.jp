@@ -10,6 +10,11 @@ export type AccountSnapshot = {
   user: { id: string; email: string; name: string; providers: string[] } | null;
   canImportHistory: boolean;
   canImportDeviceHistory: boolean;
+  riot: {
+    approved: boolean;
+    configured: boolean;
+    connection: { displayName: string; linkedAt: string } | null;
+  };
 };
 type AccountContext = {
   snapshot: AccountSnapshot | null; error: string;

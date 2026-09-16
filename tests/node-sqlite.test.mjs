@@ -23,6 +23,8 @@ test("database adapters preserve placeholders and SQLite transactions", async ()
     db.migrate(migrations);
     db.migrate(migrations);
     await db.prepare("INSERT INTO auth_accounts (subject, user_id, created_at) VALUES (?, ?, ?)").bind("subject", "user", "now").run();
+    await db.prepare("INSERT INTO riot_connections (user_id, riot_subject, display_name, linked_at) VALUES (?, ?, ?, ?)").bind("user", "riot-subject", "Player#JP1", "now").run();
+    assert.equal((await db.prepare("SELECT display_name FROM riot_connections WHERE user_id = ?").bind("user").first()).display_name, "Player#JP1");
     assert.equal((await drizzle(db).all(sql`SELECT user_id FROM auth_accounts`))[0].user_id, "user");
     assert.deepEqual(await db.prepare("SELECT user_id FROM auth_accounts").raw(), [["user"]]);
     await assert.rejects(db.batch([

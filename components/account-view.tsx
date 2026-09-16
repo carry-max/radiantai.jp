@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, ShieldCheck, UserRound } from "lucide-react";
+import { CheckCircle2, Gamepad2, ShieldCheck, Unlink, UserRound } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useAccount } from "@/components/account-provider";
@@ -18,6 +18,12 @@ const messages: Record<string, string> = {
   "account-changed": "アカウントが変わりました。現在のアカウントを確認して、もう一度操作してください。",
   "imported": "以前のアカウントのミッション・XP・利用状況を引き継ぎました。",
   "import-conflict": "すでに使用中のアカウント同士は自動で統合できません。元の記録は保持されています。",
+  "riot-pending": "Riot公式への申請前です。サイト公開後、承認を受けてから連携を有効にします。",
+  "riot-linked": "Riotアカウントを連携しました。",
+  "riot-unlinked": "Riotアカウントの連携を解除しました。",
+  "riot-cancelled": "Riotアカウントの連携をキャンセルしました。",
+  "riot-expired": "Riot連携の有効時間が過ぎました。もう一度お試しください。",
+  "riot-unavailable": "Riotアカウントを連携できませんでした。時間をおいて再度お試しください。",
 };
 
 export function AccountView() {
@@ -57,13 +63,35 @@ export function AccountView() {
       {error ? <div className="account-error" role="alert"><p>{error}</p><Button variant="outline" onClick={() => void refresh()}>再読み込み</Button></div> : null}
       {!snapshot && !error ? <p className="account-description" role="status">ログイン情報を確認しています…</p> : null}
       {user ? <div className="account-person"><strong>{user.name}</strong>{user.email && user.email !== user.name ? <span>{user.email}</span> : null}<small>{socialUser ? "ログイン中" : "現在はChatGPTでログイン中"}</small></div> : null}
-      {socialUser ? <>
+      {socialUser && snapshot && user ? <>
         <h2>ログイン方法</h2>
         <p className="account-description">別のログイン方法も連携すると、同じ記録を使えます。</p>
         <div className="social-buttons">{providerForm("google", true)}{providerForm("x", true)}</div>
+        <section className="riot-connect" aria-labelledby="riot-connect-title">
+          <div className="riot-connect-heading">
+            <span><Gamepad2 aria-hidden="true" /></span>
+            <div><h2 id="riot-connect-title">Riotアカウント連携</h2><p>VALORANTの本人確認にRiot Sign Onを使用します。</p></div>
+          </div>
+          {snapshot.riot.connection ? <>
+            <div className="riot-connected"><CheckCircle2 aria-hidden="true" /><span><strong>{snapshot.riot.connection.displayName}</strong><small>Riot連携済み</small></span></div>
+            <form action="/auth/riot/unlink" method="post" target="_top" onSubmit={() => setBusy("riot-unlink")}>
+              <input type="hidden" name="account" value={user.id} />
+              <Button type="submit" variant="outline" disabled={Boolean(busy)}><Unlink aria-hidden="true" />{busy === "riot-unlink" ? "解除しています…" : "Riot連携を解除"}</Button>
+            </form>
+          </> : <>
+            <p className="account-description">サイト公開後にRiotへ申請し、Production KeyとRSOの承認後に有効化します。パスワードをこのサイトへ入力することはありません。</p>
+            <form action="/auth/riot/start" method="post" target="_top" onSubmit={() => setBusy("riot")}>
+              <input type="hidden" name="account" value={user.id} />
+              <Button className="riot-button" type="submit" variant="outline" disabled={!snapshot.riot.configured || Boolean(busy)}>
+                <Gamepad2 aria-hidden="true" />{busy === "riot" ? "Riotへ移動しています…" : snapshot.riot.configured ? "Riotアカウントを連携" : "公開・承認後に連携可能"}
+              </Button>
+            </form>
+            <small className="riot-status">{snapshot.riot.approved ? "RSO認証情報の設定待ち" : "現在：公式申請前"}</small>
+          </>}
+        </section>
         <a className="account-continue" href="/analysis">録画のレビューを始める</a>
         <form action="/auth/signout" method="post" target="_top" onSubmit={() => setBusy("signout")}>
-          <input type="hidden" name="account" value={user!.id} />
+          <input type="hidden" name="account" value={user.id} />
           <Button type="submit" variant="outline" disabled={Boolean(busy)}>{busy === "signout" ? "ログアウト中…" : "この端末からログアウト"}</Button>
         </form>
       </> : <>
