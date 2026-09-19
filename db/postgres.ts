@@ -95,12 +95,15 @@ CREATE TABLE IF NOT EXISTS training_videos (
   title text NOT NULL,
   creator text NOT NULL,
   mode text NOT NULL CHECK (mode IN ('aim', 'tactics')),
+  rank_group text NOT NULL DEFAULT 'iron-silver',
   summary text NOT NULL DEFAULT '',
   submitted_by text NOT NULL,
   created_at text NOT NULL,
   approved integer NOT NULL DEFAULT 1 CHECK (approved IN (0, 1))
 );
+ALTER TABLE training_videos ADD COLUMN IF NOT EXISTS rank_group text NOT NULL DEFAULT 'iron-silver';
 CREATE INDEX IF NOT EXISTS idx_training_videos_mode_created ON training_videos (mode, created_at);
+CREATE INDEX IF NOT EXISTS idx_training_videos_rank_group_created ON training_videos (rank_group, created_at);
 CREATE TABLE IF NOT EXISTS training_video_votes (
   video_id text NOT NULL REFERENCES training_videos(video_id) ON DELETE CASCADE,
   user_id text NOT NULL,

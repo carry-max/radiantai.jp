@@ -24,6 +24,7 @@ const submitSchema = z.object({
   title: z.string().trim().min(3).max(140),
   creator: z.string().trim().min(1).max(60),
   mode: z.enum(["aim", "tactics"]),
+  rankGroup: z.enum(["iron-silver", "gold-diamond", "ascendant-radiant"]),
   summary: z.string().trim().max(240).default(""),
 }).strict();
 const selectSchema = z.object({
@@ -59,7 +60,7 @@ async function postHandler(request: Request) {
     return found ? json({ ok: true }) : json({ error: "対象の動画が見つかりません。" }, 404);
   }
   const submission = submitSchema.safeParse(body);
-  if (!submission.success) return json({ error: "YouTube URL、動画名、発信者、分類を確認してください。" }, 400);
+  if (!submission.success) return json({ error: "YouTube URL、動画名、発信者、ランク帯、分類を確認してください。" }, 400);
   const result = await submitCommunityTrainingVideo(trainingVideoDb(), user.id, submission.data);
   if (result.ok) return json({ ok: true, videoId: result.videoId });
   const messages = {

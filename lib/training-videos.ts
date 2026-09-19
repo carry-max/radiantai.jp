@@ -7,6 +7,18 @@ export const VALORANT_RANKS = [
 
 export type ValorantRank = (typeof VALORANT_RANKS)[number];
 
+export const VALORANT_RANK_GROUPS = [
+  { id: "iron-silver", label: "アイアン〜シルバー", ranks: ["アイアン", "ブロンズ", "シルバー"] },
+  { id: "gold-diamond", label: "ゴールド〜ダイヤ", ranks: ["ゴールド", "プラチナ", "ダイヤ"] },
+  { id: "ascendant-radiant", label: "アセンダント〜レディアント", ranks: ["アセンダント", "イモータル", "レディアント"] },
+] as const satisfies readonly { id: string; label: string; ranks: readonly ValorantRank[] }[];
+
+export type ValorantRankGroup = (typeof VALORANT_RANK_GROUPS)[number]["id"];
+
+export function rankGroupLabel(group: ValorantRankGroup) {
+  return VALORANT_RANK_GROUPS.find((item) => item.id === group)?.label ?? group;
+}
+
 export type TrainingVideo = {
   videoId: string;
   rank: number;
@@ -143,16 +155,10 @@ export const TRAINING_VIDEOS: TrainingVideo[] = [
   },
 ];
 
-const RANK_VIDEO_IDS: Record<ValorantRank, readonly string[]> = {
-  アイアン: ["lrDr63WS1hA", "yMWM_pRv-Lo", "Smozh3gEFV4", "C5zvMC0eGbU", "4VASyxOuGy0"],
-  ブロンズ: ["yMWM_pRv-Lo", "C5zvMC0eGbU", "4VASyxOuGy0", "Smozh3gEFV4", "lrDr63WS1hA"],
-  シルバー: ["4VASyxOuGy0", "C5zvMC0eGbU", "-3jpSLiL4nI", "Smozh3gEFV4", "yMWM_pRv-Lo"],
-  ゴールド: ["-3jpSLiL4nI", "XY8NZULxt44", "GTj5GTAkpj0", "C5zvMC0eGbU", "4VASyxOuGy0"],
-  プラチナ: ["XY8NZULxt44", "GTj5GTAkpj0", "6cBCjvTOTyU", "g2oCcLiFZoo", "C5zvMC0eGbU"],
-  ダイヤ: ["g2oCcLiFZoo", "_3IAzQk083c", "3pgIpXnsz28", "JVHpDjHpkJ4", "6cBCjvTOTyU"],
-  アセンダント: ["JVHpDjHpkJ4", "g2oCcLiFZoo", "3pgIpXnsz28", "M5elbcHrHsY", "nRvGeG3bAeI"],
-  イモータル: ["_N2a1pPmX24", "JVHpDjHpkJ4", "nRvGeG3bAeI", "Nlo2NQPoztQ", "3pgIpXnsz28"],
-  レディアント: ["nRvGeG3bAeI", "_N2a1pPmX24", "3pgIpXnsz28", "Nlo2NQPoztQ", "M5elbcHrHsY"],
+const RANK_GROUP_VIDEO_IDS: Record<ValorantRankGroup, readonly string[]> = {
+  "iron-silver": ["lrDr63WS1hA", "yMWM_pRv-Lo", "C5zvMC0eGbU", "4VASyxOuGy0", "Smozh3gEFV4"],
+  "gold-diamond": ["-3jpSLiL4nI", "XY8NZULxt44", "GTj5GTAkpj0", "_3IAzQk083c", "g2oCcLiFZoo"],
+  "ascendant-radiant": ["JVHpDjHpkJ4", "_N2a1pPmX24", "nRvGeG3bAeI", "3pgIpXnsz28", "Nlo2NQPoztQ"],
 };
 
 const VIDEO_BY_ID = new Map(TRAINING_VIDEOS.map((video) => [video.videoId, video]));
@@ -161,8 +167,8 @@ export function videosForMode(mode: TrainingVideoMode) {
   return TRAINING_VIDEOS.filter((video) => video.mode === mode).sort((a, b) => a.rank - b.rank);
 }
 
-export function videosForRank(targetRank: ValorantRank) {
-  return RANK_VIDEO_IDS[targetRank].map((videoId) => VIDEO_BY_ID.get(videoId)).filter((video): video is TrainingVideo => Boolean(video));
+export function videosForRankGroup(group: ValorantRankGroup) {
+  return RANK_GROUP_VIDEO_IDS[group].map((videoId) => VIDEO_BY_ID.get(videoId)).filter((video): video is TrainingVideo => Boolean(video));
 }
 
 export function recommendTrainingVideos(mode: TrainingVideoMode, reviewText: string, limit = 3) {

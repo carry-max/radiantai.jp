@@ -50,6 +50,13 @@
       "when": 1789318800000,
       "tag": "0006_training_video_rankings",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1790305200000,
+      "tag": "0007_training_video_rank_groups",
+      "breakpoints": true
     }
   ]
 }
