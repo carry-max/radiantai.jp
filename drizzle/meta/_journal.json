@@ -57,6 +57,13 @@
       "when": 1789557611464,
       "tag": "0007_riot_connections",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790305200000,
+      "tag": "0008_training_video_rank_groups",
+      "breakpoints": true
     }
   ]
 }

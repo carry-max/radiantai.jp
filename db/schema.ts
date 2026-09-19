@@ -93,12 +93,14 @@ export const trainingVideos = sqliteTable("training_videos", {
   title: text("title").notNull(),
   creator: text("creator").notNull(),
   mode: text("mode").notNull(),
+  rankGroup: text("rank_group").notNull().default("iron-silver"),
   summary: text("summary").notNull().default(""),
   submittedBy: text("submitted_by").notNull(),
   createdAt: text("created_at").notNull(),
   approved: integer("approved").notNull().default(1),
 }, (table) => [
   index("idx_training_videos_mode_created").on(table.mode, table.createdAt),
+  index("idx_training_videos_rank_group_created").on(table.rankGroup, table.createdAt),
 ]);
 
 export const trainingVideoVotes = sqliteTable("training_video_votes", {

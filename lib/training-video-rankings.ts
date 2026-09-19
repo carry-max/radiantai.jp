@@ -1,5 +1,5 @@
 import type { MissionDatabase } from "@/lib/monthly-store";
-import { TRAINING_VIDEOS, type TrainingVideoMode } from "@/lib/training-videos";
+import { TRAINING_VIDEOS, type TrainingVideoMode, type ValorantRankGroup } from "@/lib/training-videos";
 
 export const TOTAL_VIDEO_LIMIT = 300;
 export const COMMUNITY_VIDEO_LIMIT = TOTAL_VIDEO_LIMIT - TRAINING_VIDEOS.length;
@@ -12,6 +12,7 @@ export type CommunityTrainingVideo = {
   title: string;
   creator: string;
   mode: TrainingVideoMode;
+  rankGroup: ValorantRankGroup;
   summary: string;
   voteCount: number;
   selected: boolean;
@@ -23,6 +24,7 @@ type CommunityVideoRow = {
   title: string;
   creator: string;
   mode: string;
+  rank_group: string;
   summary: string;
   vote_count: number | string;
   selected: number | string;
@@ -51,6 +53,7 @@ function mapRow(row: CommunityVideoRow): CommunityTrainingVideo {
     title: row.title,
     creator: row.creator,
     mode: row.mode === "aim" ? "aim" : "tactics",
+    rankGroup: row.rank_group === "gold-diamond" || row.rank_group === "ascendant-radiant" ? row.rank_group : "iron-silver",
     summary: row.summary,
     voteCount: Number(row.vote_count),
     selected: Number(row.selected) === 1,
@@ -58,13 +61,13 @@ function mapRow(row: CommunityVideoRow): CommunityTrainingVideo {
 }
 
 export async function getCommunityTrainingVideos(db: MissionDatabase, userId = "") {
-  const result = await db.prepare(`SELECT v.video_id, v.url, v.title, v.creator, v.mode, v.summary,
+  const result = await db.prepare(`SELECT v.video_id, v.url, v.title, v.creator, v.mode, v.rank_group, v.summary,
     COUNT(votes.user_id) AS vote_count,
     MAX(CASE WHEN votes.user_id = ? THEN 1 ELSE 0 END) AS selected
     FROM training_videos v
     LEFT JOIN training_video_votes votes ON votes.video_id = v.video_id
     WHERE v.approved = 1
-    GROUP BY v.video_id, v.url, v.title, v.creator, v.mode, v.summary, v.created_at
+    GROUP BY v.video_id, v.url, v.title, v.creator, v.mode, v.rank_group, v.summary, v.created_at
     ORDER BY vote_count DESC, v.created_at ASC, v.video_id ASC
     LIMIT ?`).bind(userId, COMMUNITY_VIDEO_LIMIT).all<CommunityVideoRow>();
   return result.results.map(mapRow);
@@ -73,7 +76,7 @@ export async function getCommunityTrainingVideos(db: MissionDatabase, userId = "
 export async function submitCommunityTrainingVideo(
   db: MissionDatabase,
   userId: string,
-  input: { url: string; title: string; creator: string; mode: TrainingVideoMode; summary: string },
+  input: { url: string; title: string; creator: string; mode: TrainingVideoMode; rankGroup: ValorantRankGroup; summary: string },
   now = Date.now(),
 ) {
   const videoId = youtubeVideoId(input.url);
@@ -91,11 +94,11 @@ export async function submitCommunityTrainingVideo(
   const timestamp = new Date(now).toISOString();
   const canonicalUrl = `https://www.youtube.com/watch?v=${videoId}`;
   await db.batch([
-    db.prepare(`INSERT INTO training_videos (id, video_id, url, title, creator, mode, summary, submitted_by, created_at, approved)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 1
+    db.prepare(`INSERT INTO training_videos (id, video_id, url, title, creator, mode, rank_group, summary, submitted_by, created_at, approved)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1
       WHERE (SELECT COUNT(*) FROM training_videos) < ?
       ON CONFLICT(video_id) DO NOTHING`)
-      .bind(crypto.randomUUID(), videoId, canonicalUrl, input.title, input.creator, input.mode, input.summary, userId, timestamp, COMMUNITY_VIDEO_LIMIT),
+      .bind(crypto.randomUUID(), videoId, canonicalUrl, input.title, input.creator, input.mode, input.rankGroup, input.summary, userId, timestamp, COMMUNITY_VIDEO_LIMIT),
     db.prepare(`INSERT INTO training_video_votes (video_id, user_id, created_at)
       SELECT video_id, ?, ? FROM training_videos WHERE video_id = ? AND approved = 1
       ON CONFLICT(video_id, user_id) DO NOTHING`).bind(userId, timestamp, videoId),
