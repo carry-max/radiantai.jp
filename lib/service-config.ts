@@ -2,6 +2,7 @@ import { env } from "@/lib/runtime-env";
 
 type ServiceEnv = {
   OPENAI_API_KEY?: string; OPENAI_REVIEW_MODEL?: string; REVIEW_DAILY_LIMIT?: string;
+  JEV_API_KEY?: string; AI_GATEWAY_API_KEY?: string; DEVELOPER_EMAILS?: string;
   VIDEO_ANALYSIS_BACKEND_URL?: string; VIDEO_ANALYSIS_BACKEND_TOKEN?: string;
   PAYPAY_ENABLED?: string; RIOT_PRODUCT_APPROVED?: string;
   RIOT_RSO_CLIENT_ID?: string; RIOT_RSO_CLIENT_SECRET?: string;
@@ -24,6 +25,11 @@ export function serviceConfig() {
   return {
     apiKey: values.OPENAI_API_KEY?.trim() || "",
     model: values.OPENAI_REVIEW_MODEL?.trim() || "gpt-5.6-luna",
+    jev: {
+      apiKey: values.JEV_API_KEY?.trim() || values.AI_GATEWAY_API_KEY?.trim() || "",
+      model: "typesafe-ai/jev",
+    },
+    developerEmails: (values.DEVELOPER_EMAILS || "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean),
     videoBackendUrl: values.VIDEO_ANALYSIS_BACKEND_URL?.trim().replace(/\/$/, "") || "",
     videoBackendToken: values.VIDEO_ANALYSIS_BACKEND_TOKEN?.trim() || "",
     dailyLimit: Number.isInteger(dailyLimit) && dailyLimit > 0 ? Math.min(dailyLimit, 10000) : 200,

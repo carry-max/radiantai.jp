@@ -19,6 +19,7 @@ const api = await vite.ssrLoadModule("/app/api/analyze/route.ts");
 const modes = await vite.ssrLoadModule("/lib/review-modes.ts");
 const growth = await vite.ssrLoadModule("/lib/player-growth.ts");
 const feedback = await vite.ssrLoadModule("/app/api/review-feedback/route.ts");
+const jev = await vite.ssrLoadModule("/lib/jev-classifier.ts");
 const migrations = await Promise.all(["0000_steep_scarlet_spider.sql", "0002_goofy_rawhide_kid.sql", "0003_demonic_avengers.sql"].map(name => readFile(new URL(`../drizzle/${name}`, import.meta.url), "utf8")));
 function database() {
   const sqlite = new DatabaseSync(":memory:");
@@ -105,6 +106,35 @@ test("paid tactics coaches have independent 50, 5 and 2 match buckets while AIM 
   assert.equal((await access.readAllowance(db, "a", entitlement, "tactics:deep")).remaining, 1);
   assert.equal((await access.readAllowance(db, "a", entitlement, "tactics:riot")).remaining, 50);
   db.sqlite.close();
+});
+test("Riot batch classification reserves each new match once and caches completed results", async () => {
+  const db = database(); const now = Date.now();
+  const entitlement = { plan: "card_monthly", status: "active", startsAt: new Date(now-1000).toISOString(), endsAt: new Date(now+86400000).toISOString(), remainingDays: 1 };
+  const first = await access.reserveRiotClassificationBatch(db, "batch-owner", entitlement, ["r1", "r2", "r3"]);
+  assert.equal(first.batch.reservations.length, 3);
+  await access.completeRiotClassificationBatch(first.batch, new Map(first.batch.reservations.map(item => [item.recordingId, { id: item.recordingId, quality: "mixed" }])));
+  assert.equal((await access.readAllowance(db, "batch-owner", entitlement, "tactics:riot")).remaining, 47);
+  const replay = await access.reserveRiotClassificationBatch(db, "batch-owner", entitlement, ["r1", "r2"]);
+  assert.equal(replay.batch, null); assert.equal(Object.keys(replay.cached).length, 2);
+  await assert.rejects(access.reserveRiotClassificationBatch(db, "batch-owner", entitlement, ["duplicate", "duplicate"]), { status: 400 });
+  db.sqlite.close();
+});
+test("Jev summary ranks repeatable weak maps, causes and Deep candidates", () => {
+  const matches = [
+    {id:"m1",source:"riot",map:"Ascent",agent:"Jett",result:"loss",summary:""},
+    {id:"m2",source:"riot",map:"Ascent",agent:"Jett",result:"loss",summary:""},
+    {id:"m3",source:"replay",map:"Haven",agent:"Sova",result:"win",summary:""},
+  ];
+  const base = {qualityConfidence:.9,deathCauseConfidence:.8,model:"typesafe-ai/jev",inputTokens:10,outputTokens:2};
+  const results = [
+    {...base,id:"m1",quality:"bad",deathCause:"bad_peek",priority:3,needsDeepAnalysis:true,deepProbability:.9},
+    {...base,id:"m2",quality:"mixed",deathCause:"bad_peek",priority:2,needsDeepAnalysis:false,deepProbability:.3},
+    {...base,id:"m3",quality:"good",deathCause:"information",priority:1,needsDeepAnalysis:false,deepProbability:.1},
+  ];
+  const summary = jev.summarizeJevResults(matches, results);
+  assert.deepEqual(summary.badMatches,["m1"]); assert.equal(summary.deathCauses[0].cause,"bad_peek");
+  assert.equal(summary.weakMaps[0].name,"Ascent"); assert.deepEqual(summary.deepAnalysisMatches,["m1"]);
+  assert.deepEqual(summary.improvementOrder,["m1","m2","m3"]);
 });
 test("daily attempt and service budget limits also cover failures", async () => {
   const db = database();

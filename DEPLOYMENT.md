@@ -60,6 +60,8 @@ GitHubの`carry-max/radiantai.jp`をImportし、Framework PresetをNext.js、Pro
 | `VIDEO_ANALYSIS_BACKEND_URL` | Server | Railway動画解析サービスのHTTPS URL |
 | `VIDEO_ANALYSIS_BACKEND_TOKEN` | Sensitive | Railwayと同じ共有トークン |
 | `OPENAI_REVIEW_MODEL` | Server | `gpt-5.6-luna` |
+| `JEV_API_KEY` | Sensitive | Jev用Vercel AI Gatewayキー。未設定時は`AI_GATEWAY_API_KEY`を使用 |
+| `DEVELOPER_EMAILS` | Sensitive | `/developer/jev`を開けるログインメール（カンマ区切り） |
 | `REVIEW_DAILY_LIMIT` | Server | `200`から開始 |
 | `STRIPE_SECRET_KEY` | Sensitive | Stripe本番Secret key |
 | `STRIPE_WEBHOOK_SECRET` | Sensitive | Billing Webhook Signing secret |

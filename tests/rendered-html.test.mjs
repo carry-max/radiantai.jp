@@ -17,13 +17,15 @@ test("standard Next renders every route and rejects forged proxy identity", {tim
       if(ready) break; await delay(200);
     }
     assert.ok(ready,logs);
-    for(const [path,content] of [["/","RADIANT REVIEW"],["/login","Googleでログイン"],["/dashboard","成長の現在地"],["/analysis","録画をドロップ"],["/pricing","プレイ量に合わせた"],["/legal","特定商取引法"],["/privacy","動画全体"]]){
+    for(const [path,content] of [["/","RADIANT REVIEW"],["/login","Googleでログイン"],["/dashboard","成長の現在地"],["/analysis","録画をドロップ"],["/pricing","料金はそのまま"],["/legal","特定商取引法"],["/privacy","動画全体"]]){
       const response=await fetch(origin+path); assert.equal(response.status,200,path); assert.ok((await response.text()).includes(content),path);
     }
     const old=await fetch(origin+"/account",{redirect:"manual"});
     assert.equal(old.status,307); assert.equal(new URL(old.headers.get("location"),origin).pathname,"/login");
     const health=await fetch(origin+"/api/health");
     assert.equal(health.status,200); assert.deepEqual(await health.json(),{status:"ok"});
+    assert.equal((await fetch(origin+"/developer/jev")).status,404);
+    assert.equal((await fetch(origin+"/api/developer/jev")).status,404);
     const headers={"oai-authenticated-user-id":"owner","oai-authenticated-user-email":"owner@example.test"};
     assert.equal((await fetch(origin+"/auth/session",{headers})).status,503);
     assert.equal((await fetch(origin+"/api/player-growth",{method:"POST",headers,body:"{}"})).status,503);

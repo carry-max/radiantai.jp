@@ -44,6 +44,7 @@ export async function getAnalysisAllowance(userId: string): Promise<AnalysisAllo
   return { ...standard, tactics: { riot, replay, deep } };
 }
 export type Reservation = { db: MissionDatabase; userId: string; token: string; id: string; periodKey: string; recordingId: string; sceneKey: string };
+export type BatchReservation = { db: MissionDatabase; userId: string; token: string; reservations: Reservation[] };
 export async function releaseAnalysis(r: Reservation) {
   await r.db.batch([r.db.prepare("DELETE FROM analysis_locks WHERE user_id = ? AND token = ?").bind(r.userId, r.token)]);
 }
@@ -83,4 +84,60 @@ export async function failAnalysis(r: Reservation) {
     r.db.prepare("UPDATE analysis_records SET status = 'failed' WHERE id = ? AND user_id = ? AND status = 'pending'").bind(r.id, r.userId),
     r.db.prepare("DELETE FROM analysis_locks WHERE user_id = ? AND token = ?").bind(r.userId, r.token),
   ]);
+}
+
+export async function reserveRiotClassificationBatch(db: MissionDatabase, userId: string, entitlement: BillingEntitlement | null, recordingIds: string[], now = Date.now()) {
+  const uniqueIds = [...new Set(recordingIds)];
+  if (!uniqueIds.length || uniqueIds.length !== recordingIds.length || uniqueIds.length > 50) throw new AccessError("1〜50件の重複しない試合を指定してください。", 400);
+  const token = crypto.randomUUID();
+  const lock = await db.prepare("INSERT INTO analysis_locks (user_id, token, expires_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET token = excluded.token, expires_at = excluded.expires_at WHERE analysis_locks.expires_at <= ? RETURNING token").bind(userId, token, now + 180000, now).first();
+  if (!lock) throw new AccessError("別の解析が進行中です。完了してからお試しください。", 409);
+  const period = analysisPeriod(entitlement, now, "tactics:riot");
+  const shell: BatchReservation = { db, userId, token, reservations: [] };
+  try {
+    const cached: Record<string, Record<string, unknown>> = {};
+    const pendingIds: string[] = [];
+    for (const recordingId of uniqueIds) {
+      const row = await db.prepare("SELECT id, result_json FROM analysis_records WHERE user_id = ? AND period_key = ? AND recording_id = ? AND scene_key = 'jev-summary:v1' AND status = 'succeeded' ORDER BY created_at DESC LIMIT 1").bind(userId, period.periodKey, recordingId).first<{ id: string; result_json: string }>();
+      if (row) cached[recordingId] = { ...JSON.parse(row.result_json), analysisId: row.id, cached: true };
+      else pendingIds.push(recordingId);
+    }
+    const allowance = await readAllowance(db, userId, entitlement, "tactics:riot");
+    const known = new Map(allowance.recordings.map(item => [item.recordingId, item.scenesUsed]));
+    const newRecordings = pendingIds.filter(id => !known.has(id)).length;
+    if (newRecordings > allowance.remaining) throw new AccessError(`Riot AIの残りは${allowance.remaining}試合です。件数を減らしてください。`, 402);
+    if (pendingIds.some(id => (known.get(id) || 0) >= SCENES_PER_MATCH)) throw new AccessError("3解析済みの試合が含まれています。別の試合を選んでください。", 402);
+    if (!pendingIds.length) {
+      await db.batch([db.prepare("DELETE FROM analysis_locks WHERE user_id = ? AND token = ?").bind(userId, token)]);
+      return { cached, batch: null };
+    }
+    const day = new Date(now + 9 * 3600000).toISOString().slice(0, 10);
+    const userBudget = await db.prepare("INSERT INTO analysis_budgets (id, used) VALUES (?, 1) ON CONFLICT(id) DO UPDATE SET used = used + 1 WHERE used < 12 RETURNING used").bind(`user:${userId}:${day}`).first();
+    if (!userBudget) throw new AccessError("本日の解析上限に達しました。翌日（日本時間）にお試しください。");
+    const globalBudget = await db.prepare("INSERT INTO analysis_budgets (id, used) VALUES (?, 1) ON CONFLICT(id) DO UPDATE SET used = used + 1 WHERE used < ? RETURNING used").bind(`service:${day}`, serviceConfig().dailyLimit).first();
+    if (!globalBudget) throw new AccessError("本日の受付上限に達しました。翌日（日本時間）にお試しください。試合枠は消費していません。", 503);
+    const timestamp = new Date(now).toISOString();
+    shell.reservations = pendingIds.map(recordingId => ({ db, userId, token, id: crypto.randomUUID(), periodKey: period.periodKey, recordingId, sceneKey: "jev-summary:v1" }));
+    await db.batch(shell.reservations.map(reservation => db.prepare("INSERT INTO analysis_records (id,user_id,period_key,recording_id,scene_key,status,created_at) VALUES (?,?,?,?,?,'pending',?)").bind(reservation.id, userId, period.periodKey, reservation.recordingId, reservation.sceneKey, timestamp)));
+    return { cached, batch: shell };
+  } catch (error) {
+    await db.batch([db.prepare("DELETE FROM analysis_locks WHERE user_id = ? AND token = ?").bind(userId, token)]);
+    throw error;
+  }
+}
+
+export async function completeRiotClassificationBatch(batch: BatchReservation, payloads: Map<string, Record<string, unknown>>) {
+  const statements = batch.reservations.map(reservation => {
+    const payload = payloads.get(reservation.recordingId);
+    return batch.db.prepare("UPDATE analysis_records SET status = ?, result_json = ?, usage_json = ? WHERE id = ? AND user_id = ? AND EXISTS (SELECT 1 FROM analysis_locks WHERE user_id = ? AND token = ?)")
+      .bind(payload ? "succeeded" : "failed", JSON.stringify(payload || {}), JSON.stringify({ model: "typesafe-ai/jev", purpose: "match-classification" }), reservation.id, batch.userId, batch.userId, batch.token);
+  });
+  statements.push(batch.db.prepare("DELETE FROM analysis_locks WHERE user_id = ? AND token = ?").bind(batch.userId, batch.token));
+  await batch.db.batch(statements);
+}
+
+export async function failRiotClassificationBatch(batch: BatchReservation) {
+  const statements = batch.reservations.map(reservation => batch.db.prepare("UPDATE analysis_records SET status = 'failed' WHERE id = ? AND user_id = ? AND status = 'pending'").bind(reservation.id, batch.userId));
+  statements.push(batch.db.prepare("DELETE FROM analysis_locks WHERE user_id = ? AND token = ?").bind(batch.userId, batch.token));
+  await batch.db.batch(statements);
 }
