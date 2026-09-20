@@ -36,6 +36,7 @@ test("Windows UI explains that no in-match advice is shown", async () => {
   const app = await read("src/App.tsx");
   assert.match(app, /試合中にAIの助言や画面表示は行いません/);
   assert.match(app, /死亡前25秒＋死亡後5秒/);
+  assert.match(app, /RadiantAI isn&(?:apos|#39);t endorsed by Riot Games/);
 });
 
 test("Windows clip API uses signed private storage and the shared analysis allowance", async () => {
@@ -46,4 +47,13 @@ test("Windows clip API uses signed private storage and the shared analysis allow
   assert.match(analyzeRoute, /completeAnalysis\(/);
   assert.match(analyzeRoute, /failAnalysis\(/);
   assert.match(analyzeRoute, /removeAimClip\(user\.id, storagePath\)/);
+});
+
+test("Production build requires both Overwolf and Windows signing credentials", async () => {
+  const script = await read("scripts/build-production.ps1");
+  for (const variable of ["OW_CLI_EMAIL", "OW_CLI_API_KEY", "OW_BUILD_KEY", "CSC_LINK", "CSC_KEY_PASSWORD"]) {
+    assert.match(script, new RegExp(variable));
+  }
+  assert.match(script, /Get-AuthenticodeSignature/);
+  assert.match(script, /Status -ne "Valid"/);
 });

@@ -127,7 +127,7 @@ export function App() {
         </section>
       </div>
 
-      <footer><span>映像は端末へ保存</span><p>解析を実行したクリップだけを非公開Storageへ一時送信します。APIキーはアプリに保存しません。</p><small>RadiantAI Windows {snapshot.version}</small></footer>
+      <footer><span>映像は端末へ保存</span><div><p>解析を実行したクリップだけを非公開Storageへ一時送信します。APIキーはアプリに保存しません。</p><p className="riot-disclaimer">RadiantAI isn&apos;t endorsed by Riot Games and doesn&apos;t reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games and all associated properties are trademarks or registered trademarks of Riot Games, Inc.</p></div><small>RadiantAI Windows {snapshot.version}</small></footer>
     </main>
   </div>;
 }

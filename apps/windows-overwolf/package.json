@@ -16,6 +16,7 @@
     "build:electron": "tsc -p tsconfig.electron.json",
     "build:native": "cargo build --manifest-path native/Cargo.toml --release",
     "build": "npm run build:ui && npm run build:electron && npm run build:native",
+    "build:production": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-production.ps1",
     "start": "ow-electron .",
     "build:ow-electron": "ow-electron-builder --publish=never",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.electron.json --noEmit"

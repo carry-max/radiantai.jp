@@ -26,6 +26,8 @@ RadiantAI API → private Supabase Storage → Gemini / GPT
 
 Overwolfの本番配布には、GEP・Recorderを含むアプリ審査と署名設定が必要です。Riotの公開API申請とは別の手続きです。
 
+提出用の英語文面、QA計画、本番署名手順は[`docs/overwolf`](../../docs/overwolf)にあります。
+
 ## セットアップ
 
 ```powershell
