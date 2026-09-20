@@ -17,6 +17,7 @@ const access = await vite.ssrLoadModule("/lib/analysis-access.ts");
 const billing = await vite.ssrLoadModule("/lib/billing.ts");
 const api = await vite.ssrLoadModule("/app/api/analyze/route.ts");
 const modes = await vite.ssrLoadModule("/lib/review-modes.ts");
+const tactics = await vite.ssrLoadModule("/lib/tactics-coaches.ts");
 const growth = await vite.ssrLoadModule("/lib/player-growth.ts");
 const feedback = await vite.ssrLoadModule("/app/api/review-feedback/route.ts");
 const jev = await vite.ssrLoadModule("/lib/jev-classifier.ts");
@@ -112,6 +113,11 @@ test("paid plan has independent 50, 5 and 2 match buckets", async () => {
   assert.equal((await access.readAllowance(db, "a", entitlement, "tactics:deep")).remaining, 1);
   assert.equal((await access.readAllowance(db, "a", entitlement, "tactics:riot")).remaining, 50);
   db.sqlite.close();
+});
+test("manual replay and automatic tactics share the 50-match allowance", () => {
+  assert.equal(tactics.accessKindForReview("tactics", "replay"), "tactics:riot");
+  assert.equal(tactics.accessKindForReview("tactics", "riot"), "tactics:riot");
+  assert.equal(tactics.accessKindForReview("round", "deep"), "tactics:deep");
 });
 test("Riot batch classification reserves each new match once and caches completed results", async () => {
   const db = database(); const now = Date.now();

@@ -59,7 +59,7 @@ APIはapp/api/、認証はapp/auth/、画面別metadataは各layout.tsxにあり
 
 - Supabase：`NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`、`AUTH_SITE_URL`。Google/Xを有効にし、`https://radiantai.jp/auth/callback`をSupabaseの許可済みリダイレクトURLへ追加します。新しいpublishable keyを使う場合は`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`にも対応しています。
 - Riot：公開後にProduction KeyとRiot Sign Onを申請します。承認前は連携ボタンを無効化し、Development KeyやPersonal Keyで公開しません。承認後のCallback URLは`https://radiantai.jp/auth/riot/callback`です。
-- AI解析：Railwayへ`OPENAI_API_KEY`とミクロ用の`GEMINI_API_KEY`、両サービスへ同じ`VIDEO_ANALYSIS_BACKEND_TOKEN`を設定します。立ち回りはRiot API → Jev → GPT、ミクロはOverwolf → Gemini → GPTの順で処理します。
+- AI解析：Railwayへ`OPENAI_API_KEY`とミクロ用の`GEMINI_API_KEY`、両サービスへ同じ`VIDEO_ANALYSIS_BACKEND_TOKEN`を設定します。立ち回りは、リプレイを利用者が選ぶ手動解析、またはRiot API → Jev → GPTによる自動判断を選べます。ミクロはOverwolf → Gemini → GPTの順で処理します。
 - ミクロ自動クリップ：承認済みOverwolf WindowsアプリがVALORANTの`death`を検出し、死亡前25秒＋死亡後5秒をローカル保存します。利用者による録画操作や動画選択は不要です。
 - Riot AI高速分類：Vercelへ`JEV_API_KEY`（または`AI_GATEWAY_API_KEY`）を設定します。WindowsアプリがRiot API／Replayの結果をテキストと数値へ整形し、`POST /api/riot/classify`へ最大50試合を送ります。Jevは映像そのものを受け取りません。
 - 開発者コンソール：Vercelの`DEVELOPER_EMAILS`へ許可メールを設定すると、そのログインだけが`/developer/jev`を開けます。ナビゲーションには表示されず、画面へ入力したキーは保存されません。

@@ -15,7 +15,8 @@ export function isTacticsCoach(value: unknown): value is TacticsCoach {
 
 export function accessKindForReview(mode: ReviewMode, coach?: TacticsCoach): AnalysisAccessKind {
   if (mode === "aim") return "standard";
-  return `tactics:${coach || (mode === "round" ? "deep" : "replay")}`;
+  if (mode === "tactics") return "tactics:riot";
+  return "tactics:deep";
 }
 
 export function coachMode(coach: TacticsCoach): ReviewMode {

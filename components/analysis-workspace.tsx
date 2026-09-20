@@ -976,6 +976,7 @@ export function AnalysisWorkspace() {
     if (coach === tacticsCoach && coachMode(coach) === reviewMode) return;
     setTacticsCoach(coach);
     changeReviewMode(coachMode(coach), aimCrop, true);
+    setStatus({ message: coach === "replay" ? "リプレイを選び、確認したい場面を切り出してください。" : coach === "riot" ? "Riot APIの試合データから、AIが確認すべき試合を選びます。" : "動画上でラウンド開始と終了を指定してください。", tone: "neutral" });
   };
 
   const installWindowsApp = async () => {
@@ -1231,7 +1232,7 @@ export function AnalysisWorkspace() {
     } catch (error) { setBillingNotice({ tone: "error", message: error instanceof Error ? error.message : "更新停止を確認できませんでした。" }); }
     finally { setCancelBusy(false); }
   };
-  const currentAllowance = reviewMode === "aim" ? allowance : allowance?.tactics?.[tacticsCoach];
+  const currentAllowance = reviewMode === "aim" ? allowance : reviewMode === "tactics" ? allowance?.tactics?.riot : allowance?.tactics?.deep;
   const currentScenes = currentAllowance?.recordings.find(item => item.recordingId === recordingId)?.scenesUsed || 0;
   const riotReady = Boolean(account.snapshot?.riot.configured && account.snapshot.riot.connection && isWindows && isWindowsApp);
   const pendingPrice = pendingPlan?.startsWith("climb_") ? 1800 : 900;
@@ -1258,8 +1259,8 @@ export function AnalysisWorkspace() {
           <div>
             <p className="eyebrow">試合後の振り返り · 日本語AIコーチ</p>
             <h1 id="page-title">試合判断と撃ち合いを、別々に伸ばす。</h1>
-            <p className="intro-copy">立ち回りはRiot APIだけで最大50試合を分類。ミクロはWindowsアプリがデス前後を自動保存し、映像から改善点を整理します。</p>
-            <p className="intro-privacy">{reviewMode === "tactics" ? "立ち回りモードは録画不要。Riot APIの試合データだけをAIへ送信します。" : reviewMode === "aim" ? "手動録画・アップロード不要。自動保存した30秒クリップだけを試合後にAIへ送信します。" : "Deepは重要な試合や場面を詳しく確認する追加解析です。"}</p>
+            <p className="intro-copy">立ち回りは、見たいリプレイを自分で選ぶか、Riot APIからAIに任せて最大50試合を分析。ミクロはWindowsアプリがデス前後を自動保存し、映像から改善点を整理します。</p>
+            <p className="intro-privacy">{reviewMode === "tactics" ? tacticsCoach === "replay" ? "選んだリプレイから切り出した場面だけをAIへ送信します。" : "AIに任せる場合は録画不要。Riot APIの試合データだけをAIへ送信します。" : reviewMode === "aim" ? "手動録画・アップロード不要。自動保存した30秒クリップだけを試合後にAIへ送信します。" : "Deepは重要な試合や場面を詳しく確認する追加解析です。"}</p>
             <Button type="button" variant="ghost" className="intro-sample" disabled={isAnalyzing} onClick={() => finishReview(demoReview(undefined, reviewMode), "demo", "サンプルです。あなたの録画は解析せず、履歴・XP・解析枠を変更しません。")}><Play /> 録画なしでサンプルを見る</Button>
           </div>
           <div className="capability-row" aria-label="対応範囲">
@@ -1270,7 +1271,8 @@ export function AnalysisWorkspace() {
         <section className="review-mode-bar" aria-label="解析モード">
           <div className="review-mode-switch" role="group" aria-label="目的を選ぶ">
             <div className="review-mode-family tactics-coach-family"><span>立ち回りモード</span><div className="review-mode-options tactics-coach-options">
-              <button type="button" aria-pressed={reviewMode === "tactics" && tacticsCoach === "riot"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => selectTacticsCoach("riot")}><Zap /><span><strong>立ち回り <em>50試合</em></strong><small>録画不要 · Riot API</small></span></button>
+              <button type="button" aria-pressed={reviewMode === "tactics" && tacticsCoach === "replay"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => selectTacticsCoach("replay")}><UploadCloud /><span><strong>リプレイを選ぶ <em>立ち回り枠</em></strong><small>自分で試合・場面を指定</small></span></button>
+              <button type="button" aria-pressed={reviewMode === "tactics" && tacticsCoach === "riot"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => selectTacticsCoach("riot")}><Zap /><span><strong>AIに任せる <em>最大50試合</em></strong><small>録画不要 · Riot APIから自動判断</small></span></button>
             </div></div>
             <div className="review-mode-family"><span>ミクロモード</span><div className="review-mode-options single">
               <button type="button" aria-pressed={reviewMode === "aim"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => changeReviewMode("aim")}><Crosshair /><span><strong>ミクロ <em>5試合</em></strong><small>録画操作不要 · Overwolf</small></span></button>
@@ -1279,7 +1281,7 @@ export function AnalysisWorkspace() {
               <button type="button" aria-pressed={reviewMode === "round"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => selectTacticsCoach("deep")}><UsersRound /><span><strong>Deep <em>2試合</em></strong><small>重要場面を詳しく確認</small></span></button>
             </div></div>
           </div>
-          <div className="review-mode-price"><Badge variant="outline">月額900円</Badge><p>立ち回り50試合・ミクロ5試合・Deep 2試合。</p><small>未使用分は月2試合まで、必要な別モードへ自動振替できます。</small></div>
+          <div className="review-mode-price"><Badge variant="outline">月額900円</Badge><p>立ち回り最大50試合・ミクロ5試合・Deep 2試合。</p><small>立ち回りの2つの方法は同じ50試合枠を使います。未使用分は月2試合まで別モードへ自動振替できます。</small></div>
         </section>
         {reviewMode === "aim" ? <section className="aim-autoclip-flow" aria-label="ミクロ自動クリップ解析の流れ">
           <div className="aim-autoclip-heading">
@@ -1300,6 +1302,11 @@ export function AnalysisWorkspace() {
           <div><p className="eyebrow">TACTICS / NO VIDEO REQUIRED</p><h2>録画なしで、最大50試合の判断傾向を分析</h2><p>Riot APIの戦績・マップ・エージェント・ラウンド情報をAIが分類し、苦手傾向と次の改善行動を整理します。</p></div>
           <ol><li><span>01</span><strong>Riot API</strong><small>試合データを取得</small></li><li><span>02</span><strong>AI</strong><small>最大50試合を分類</small></li><li><span>03</span><strong>AI</strong><small>判断・マクロ分析を整理</small></li></ol>
           <p><ShieldCheck /> 録画・映像・音声は使用しません。Windowsアプリが試合後に同期します。</p>
+        </section> : null}
+        {reviewMode === "tactics" && tacticsCoach === "replay" ? <section className="macro-data-flow" aria-label="リプレイを選ぶ立ち回り解析の流れ">
+          <div><p className="eyebrow">TACTICS / CHOOSE A REPLAY</p><h2>見たいリプレイを選んで、立ち回りを振り返る</h2><p>確認したい試合と場面を自分で選び、切り出した静止画からAIが判断の改善点を整理します。</p></div>
+          <ol><li><span>01</span><strong>リプレイを選ぶ</strong><small>確認したい試合を指定</small></li><li><span>02</span><strong>場面を選ぶ</strong><small>重要な判断の前後を切り出す</small></li><li><span>03</span><strong>AI解析</strong><small>立ち回りの改善点を整理</small></li></ol>
+          <p><ShieldCheck /> 動画全体・音声は送信せず、選んだ場面の静止画だけを解析に使います。</p>
         </section> : null}
         {reviewMode !== "aim" && tacticsCoach === "riot" ? <section className={`riot-ai-gate ${riotReady ? "ready" : "pending"}`} aria-live="polite">
           <div><Zap /><span><strong>Riot AI / 最大50試合</strong><small>{riotReady ? `${account.snapshot?.riot.connection?.displayName}・Windowsアプリから利用できます` : !account.snapshot?.riot.configured ? "Riot公式承認後にRSOを有効化します" : !account.snapshot.riot.connection ? "Riotアカウント連携が必要です" : !isWindows ? "Windows版が必要です" : "Windowsへアプリをインストールして起動してください"}</small></span></div>
@@ -1450,7 +1457,7 @@ export function AnalysisWorkspace() {
           <aside className="secondary-column">
             <section className="panel context-panel">
               <div className="allowance-box" aria-live="polite">
-                <strong>{!serviceReady ? "AIレビューは準備中" : currentAllowance ? `${currentAllowance.tier} · ${reviewMode === "aim" ? "ミクロ" : tacticsCoach === "riot" ? "立ち回り" : "Deep"} 残り ${currentAllowance.remaining} / ${currentAllowance.limit}試合` : "解析にはログインが必要です"}</strong>
+                <strong>{!serviceReady ? "AIレビューは準備中" : currentAllowance ? `${currentAllowance.tier} · ${reviewMode === "aim" ? "ミクロ" : reviewMode === "tactics" ? "立ち回り" : "Deep"} 残り ${currentAllowance.remaining} / ${currentAllowance.limit}試合` : "解析にはログインが必要です"}</strong>
                 <p>{serviceReady ? `このモードでは1試合につき最大3解析。${recordingId ? `この録画は${currentScenes} / 3場面を解析済み。` : currentAllowance?.tier === "無料体験" ? "無料体験は全モード合計で1アカウント1試合です。" : "未使用枠は月2試合まで別モードへ自動振替できます。"}` : "録画の切り出しとサンプルは利用できます。購入・請求はありません。"}</p>
                 {allowanceError ? <p role="alert">{allowanceError}</p> : null}
                 <Button variant="ghost" size="sm" onClick={() => void reloadAllowance()}><RotateCcw /> 利用状況を更新</Button>
