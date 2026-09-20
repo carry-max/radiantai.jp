@@ -1,16 +1,11 @@
-import { serviceConfig, merchantConfigured } from "@/lib/service-config";
+import { merchantConfigured } from "@/lib/service-config";
 import Link from "next/link";
 export const dynamic = "force-dynamic";
 export default function LegalPage() {
-  const merchant = serviceConfig().merchant;
   return <main className="legal-page"><Link href="/">← Radiant Reviewに戻る</Link><h1>販売条件・運営情報</h1>
-    {!merchantConfigured() ? <p className="billing-setup-note">販売準備中です。運営情報が確定するまで、有料プランの購入・請求は行えません。</p> : null}
+    {!merchantConfigured() ? <p className="billing-setup-note">販売準備中です。現在、有料プランの購入・請求は行えません。</p> : null}
     <h2>特定商取引法に基づく表記</h2><dl>
-      <dt>販売事業者</dt><dd>{merchant.name || "販売開始前に掲載"}</dd>
-      <dt>運営責任者</dt><dd>{merchant.representative || "販売開始前に掲載"}</dd>
-      <dt>所在地</dt><dd>{merchant.address || "販売開始前に掲載"}</dd>
-      <dt>電話番号</dt><dd>{merchant.phone || "販売開始前に掲載"}</dd>
-      <dt>お問い合わせ</dt><dd>{merchant.email ? <a href={`mailto:${merchant.email}`}>{merchant.email}</a> : "販売開始前に掲載"}</dd>
+      <dt>事業者情報</dt><dd>販売事業者名、運営責任者、所在地、電話番号は、特定商取引法第11条ただし書に基づき省略しています。請求があった場合は、書面または電子メールで遅滞なく開示します。開示請求は<Link href="/privacy#contact">お問い合わせ窓口</Link>から受け付けます。</dd>
       <dt>販売価格</dt><dd>Radiant AI：月額900円（税込）、またはPayPay 30日パス900円（税込）。立ち回りは最大50試合、ミクロは最大5試合、Deepは最大2試合です。</dd>
       <dt>料金に含まれるもの</dt><dd>通常プランのAI解析費。追加の従量請求はありません。通信費はお客様負担です。</dd>
       <dt>支払方法・時期</dt><dd>カード：初回購入時と以降毎月の更新日に支払い。PayPay：購入時の1回払い。利用できる方法は料金画面に表示します。</dd>
@@ -18,7 +13,8 @@ export default function LegalPage() {
       <dt>利用範囲・上限</dt><dd>立ち回りは録画を使わず、Riot APIの最大50試合をAIが分類して判断傾向を整理します。ミクロはOverwolfが死亡前25秒〜後5秒をWindows端末へ自動保存し、最大5試合をAIが映像解析して改善点を整理します。Deepは最大2試合です。Riot連携機能はRiot公式承認後に有効化します。1アカウント1日12回（失敗・保留を含む、日本時間）まで受け付けます。</dd>
       <dt>解析枠</dt><dd>有料期間では立ち回り、ミクロ、Deepを別々に数えます。別モードに未使用枠がある場合、合計2試合まで自動振替できます。無料体験は全モード合計1試合です。解析失敗・判定保留では試合枠を消費しません。同じ結果の再表示は追加消費しません。未使用枠は次の期間へ繰り越しません。</dd>
       <dt>解約</dt><dd>カードの次回更新は、次の更新日時より前に「料金・利用状況」から停止できます。停止後も期間末まで残り枠を使えます。PayPayは更新停止の操作は不要です。</dd>
-      <dt>返金</dt><dd>お客様都合の購入後返金・未使用枠の日割り返金は原則ありません。重複請求・誤請求は確認のうえ返金します。事業者都合で契約期間内にサービスを提供できなかった場合は、未提供分の返金を含め個別対応します。法令に基づく権利を制限しません。</dd>
+      <dt>請求・決済への対応</dt><dd>身に覚えのない請求、重複請求、誤請求などの連絡を受けた場合は、決済記録を速やかに確認し、返金を含む必要な対応を行います。</dd>
+      <dt>返金</dt><dd>お客様都合の購入後返金・未使用枠の日割り返金は原則ありません。事業者都合で契約期間内にサービスを提供できなかった場合は、未提供分の返金を含め速やかに個別対応します。法令に基づく権利を制限しません。</dd>
       <dt>動作環境</dt><dd>インターネット接続と、Overwolfに対応したWindows版Radiant AIアプリが必要です。Deepで録画を指定する場合、MP4・WebM・MOVはブラウザが再生できる形式に限ります。</dd>
     </dl><h2>サービスの位置づけ</h2><p>試合後の振り返りを支援するAIサービスです。ランク上昇や勝率向上を保証するものではありません。ゲームへの接続・操作や、試合中の助言は行いません。Riot Gamesの公式サービスではなく、Riot Gamesによる推奨・保証を受けたものではありません。</p>
     <p><Link href="/privacy">データの取り扱い</Link></p>

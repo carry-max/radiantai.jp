@@ -115,7 +115,7 @@ export function AccountView() {
         }}>自分の旧レポートを取り込む</Button>
       </div> : null}
       <p className="account-footnote"><ShieldCheck aria-hidden="true" />パスワードはGoogle・Xの画面で入力します。</p>
-      <nav className="account-legal"><a href="/privacy">プライバシー</a><a href="/legal">利用条件・販売者情報</a></nav>
+      <nav className="account-legal"><a href="/privacy">プライバシー</a><a href="/legal">販売条件・運営情報</a></nav>
     </section>
   </main>;
 }
