@@ -21,12 +21,12 @@ const postHandler = withAuth(async (request: Request) => {
   try { input = developerSchema.parse(await request.json()); }
   catch { return Response.json({ error: "JSON形式と試合データを確認してください。最大50試合です。" }, { status: 400 }); }
   const apiKey = input.apiKey || serviceConfig().jev.apiKey;
-  if (!apiKey) return Response.json({ error: "Jev APIキーを入力するか、サーバー環境変数JEV_API_KEYを設定してください。" }, { status: 503 });
+  if (!apiKey) return Response.json({ error: "AI APIキーを入力するか、サーバー環境変数を設定してください。" }, { status: 503 });
   try {
     return Response.json({ model: JEV_MODEL, ...await classifyJevMatches(input.matches, { apiKey, userId: `developer:${developer.id}` }) });
   } catch (error) {
     console.error("developer jev request failed", error instanceof Error ? error.name : "unknown");
-    return Response.json({ error: "Jevへ接続できませんでした。キーとGatewayの利用設定を確認してください。" }, { status: 502 });
+    return Response.json({ error: "AIへ接続できませんでした。キーとGatewayの利用設定を確認してください。" }, { status: 502 });
   }
 });
 

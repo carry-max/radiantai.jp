@@ -1274,7 +1274,7 @@ export function AnalysisWorkspace() {
             <p className="eyebrow">試合後の振り返り · 日本語AIコーチ</p>
             <h1 id="page-title">試合判断と撃ち合いを、別々に伸ばす。</h1>
             <p className="intro-copy">立ち回りはRiot APIだけで最大50試合を分類。ミクロはWindowsアプリがデス前後を自動保存し、映像から改善点を整理します。</p>
-            <p className="intro-privacy">{reviewMode === "tactics" ? "立ち回りモードは録画不要。Riot APIの試合データだけをJevとGPTへ送信します。" : reviewMode === "aim" ? "手動録画・アップロード不要。自動保存した30秒クリップだけを試合後にGeminiとGPTへ送信します。" : "Deepは重要な試合や場面を詳しく確認する追加解析です。"}</p>
+            <p className="intro-privacy">{reviewMode === "tactics" ? "立ち回りモードは録画不要。Riot APIの試合データだけをAIへ送信します。" : reviewMode === "aim" ? "手動録画・アップロード不要。自動保存した30秒クリップだけを試合後にAIへ送信します。" : "Deepは重要な試合や場面を詳しく確認する追加解析です。"}</p>
             <Button type="button" variant="ghost" className="intro-sample" disabled={isAnalyzing} onClick={() => finishReview(demoReview(undefined, reviewMode), "demo", "サンプルです。あなたの録画は解析せず、履歴・XP・解析枠を変更しません。")}><Play /> 録画なしでサンプルを見る</Button>
           </div>
           <div className="capability-row" aria-label="対応範囲">
@@ -1300,20 +1300,20 @@ export function AnalysisWorkspace() {
           <div className="aim-autoclip-heading">
             <span className="pipeline-icon"><Gamepad2 /></span>
             <div><p className="eyebrow">MICRO / AUTOMATIC DEATH CLIPS</p><h2>録画操作なしで、デスごとに30秒を自動保存</h2><p>試合中はWindowsアプリが自動保存し、解析は試合終了後にまとめて実行します。</p></div>
-            <Badge>Gemini → GPT</Badge>
+            <Badge>AI解析</Badge>
           </div>
           <div className="aim-autoclip-steps">
             <div><small>01 / IN MATCH</small><strong>Overwolf</strong><span>VALORANTを検出</span></div>
             <div><small>02 / EVENT</small><strong>death検出</strong><span>自分のデスだけを受信</span></div>
             <div><small>03 / WINDOWS</small><strong>自動クリップ</strong><span>死亡前25秒＋死亡後5秒</span></div>
             <div><small>04 / AFTER MATCH</small><strong>クリップ一覧</strong><span>デスごとに選択・確認</span></div>
-            <div><small>05 / AI REVIEW</small><strong>Gemini → GPT</strong><span>映像解析から改善点整理</span></div>
+            <div><small>05 / AI REVIEW</small><strong>AI解析</strong><span>映像解析から改善点整理</span></div>
           </div>
           <p className="aim-autoclip-note"><ShieldCheck /> Overwolfのdeathイベントを保存トリガーに使います。試合中にAI解析や助言は表示しません。</p>
         </section> : null}
         {reviewMode === "tactics" && tacticsCoach === "riot" ? <section className="macro-data-flow" aria-label="立ち回り解析の流れ">
-          <div><p className="eyebrow">TACTICS / NO VIDEO REQUIRED</p><h2>録画なしで、最大50試合の判断傾向を分析</h2><p>Riot APIの戦績・マップ・エージェント・ラウンド情報をJevが高速分類し、GPTが苦手傾向と次の改善行動を整理します。</p></div>
-          <ol><li><span>01</span><strong>Riot API</strong><small>試合データを取得</small></li><li><span>02</span><strong>Jev</strong><small>最大50試合を分類</small></li><li><span>03</span><strong>GPT</strong><small>判断・マクロ分析を整理</small></li></ol>
+          <div><p className="eyebrow">TACTICS / NO VIDEO REQUIRED</p><h2>録画なしで、最大50試合の判断傾向を分析</h2><p>Riot APIの戦績・マップ・エージェント・ラウンド情報をAIが分類し、苦手傾向と次の改善行動を整理します。</p></div>
+          <ol><li><span>01</span><strong>Riot API</strong><small>試合データを取得</small></li><li><span>02</span><strong>AI</strong><small>最大50試合を分類</small></li><li><span>03</span><strong>AI</strong><small>判断・マクロ分析を整理</small></li></ol>
           <p><ShieldCheck /> 録画・映像・音声は使用しません。Windowsアプリが試合後に同期します。</p>
         </section> : null}
         {reviewMode !== "aim" && tacticsCoach === "riot" ? <section className={`riot-ai-gate ${riotReady ? "ready" : "pending"}`} aria-live="polite">
@@ -1494,8 +1494,8 @@ export function AnalysisWorkspace() {
                 {isAnalyzing ? <LoaderCircle className="spin" /> : <Sparkles />}{isAnalyzing ? "AI解析中…" : reviewMode === "round" ? "このラウンドをレビュー" : "この場面の改善点を確認"}
               </Button>
               <Button type="button" variant="ghost" disabled={isAnalyzing} onClick={() => finishReview(demoReview(selectedTags[0], reviewMode), "demo", "デモレビューを表示しました。月間ミッション・XPは変更されません。")} className="demo-button"><Play /> サンプルレビューを見る</Button>
-              {reviewMode === "aim" ? <p className="aim-result-note">Windowsアプリの30秒クリップはGemini 3.8 Flashで、ピーク方法・クロスヘア・照準修正・ストッピング・射撃制御を試合後に解析します。この画面の6枚確認は、細かい照準位置を見直す手動機能です。</p> : reviewMode === "round" ? <p className="aim-result-note">ラウンドレビューは初期配置から敗因までを確認します。画像間の通話や画面外の動きは断定せず、月間ミッションとXPの判定対象にはしません。</p> : null}
-              <p className="cost-note">{reviewMode === "aim" ? "自動クリップは選択した30秒動画をGeminiへ送信します。手動確認は最大6枚の画像だけをOpenAIへ送ります。" : "最大6枚の画像・試合情報・練習課題をOpenAIへ送ります。動画全体・音声は送りません。"}{apiKey.trim() ? "自分のAPIキーでの解析は別途API料金が発生します。" : "無料体験・有料プランの範囲内では追加料金はありません。"}</p>
+              {reviewMode === "aim" ? <p className="aim-result-note">Windowsアプリの30秒クリップをAIが確認し、ピーク方法・クロスヘア・照準修正・ストッピング・射撃制御を試合後に解析します。この画面の6枚確認は、細かい照準位置を見直す手動機能です。</p> : reviewMode === "round" ? <p className="aim-result-note">ラウンドレビューは初期配置から敗因までを確認します。画像間の通話や画面外の動きは断定せず、月間ミッションとXPの判定対象にはしません。</p> : null}
+              <p className="cost-note">{reviewMode === "aim" ? "自動クリップは選択した30秒動画をAIへ送信します。手動確認は最大6枚の画像だけをAIへ送ります。" : "最大6枚の画像・試合情報・練習課題をAIへ送ります。動画全体・音声は送りません。"}{apiKey.trim() ? "自分のAPIキーでの解析は別途API料金が発生します。" : "無料体験・有料プランの範囲内では追加料金はありません。"}</p>
             </section>
 
             <section className="panel result-panel" ref={resultRef}>
@@ -1566,12 +1566,12 @@ export function AnalysisWorkspace() {
 
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="settings-dialog">
-          <DialogHeader><p className="eyebrow">AI CONNECTION</p><DialogTitle>解析とデータの取り扱い</DialogTitle><DialogDescription>通常の無料体験・有料プランはAPIキー不要です。立ち回りはRiot API → Jev → GPT、ミクロはOverwolf → Gemini → GPTで試合後に解析します。</DialogDescription></DialogHeader>
+          <DialogHeader><p className="eyebrow">AI CONNECTION</p><DialogTitle>解析とデータの取り扱い</DialogTitle><DialogDescription>通常の無料体験・有料プランはAPIキー不要です。立ち回りはRiot API → AI、ミクロはOverwolf → AIで試合後に解析します。</DialogDescription></DialogHeader>
           <details className="personal-api"><summary>自分のAPIキーで試す（任意・別料金）</summary><p>無料体験・月額プランとは別の試用方法です。API料金はご自身のOpenAIアカウントに発生します。キーは保存せず、解析時だけこのサイトを経由してOpenAIへ送ります。</p><div className="settings-fields">
             <label htmlFor="apiKey"><span>OpenAI APIキー</span></label>
             <div className="key-field"><KeyRound /><Input id="apiKey" type={showKey ? "text" : "password"} value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk-..." autoComplete="off" spellCheck={false} /><Button type="button" variant="ghost" size="icon-sm" aria-label={showKey ? "APIキーを隠す" : "APIキーを表示"} onClick={() => setShowKey((current) => !current)}>{showKey ? <EyeOff /> : <Eye />}</Button></div>
             <label htmlFor="model"><span>解析モデル</span></label>
-            <NativeSelect id="model" value={model} onChange={(event) => setModel(event.target.value)}><NativeSelectOption value="gpt-5.6-luna">GPT-5.6 Luna（推奨・低コスト）</NativeSelectOption><NativeSelectOption value="gpt-5.6-sol">GPT-5.6 Sol（高精度）</NativeSelectOption></NativeSelect>
+            <NativeSelect id="model" value={model} onChange={(event) => setModel(event.target.value)}><NativeSelectOption value="gpt-5.6-luna">AI 高速モデル（推奨・低コスト）</NativeSelectOption><NativeSelectOption value="gpt-5.6-sol">AI 高精度モデル</NativeSelectOption></NativeSelect>
           </div>
           </details>
           <div className="privacy-box"><ShieldCheck /><div><strong>モードごとに必要なデータだけ送信</strong><p>立ち回りは試合データだけ、ミクロは自動保存した30秒クリップだけを送信します。解析回数と結果はアカウントに紐づけて保存します。</p></div></div>

@@ -5,7 +5,7 @@ import { JevDeveloperView } from "@/components/jev-developer-view";
 import { getDeveloper } from "@/lib/developer-access";
 import { serviceConfig } from "@/lib/service-config";
 
-export const metadata: Metadata = { title: "Jev Console | Radiant AI", robots: { index: false, follow: false, noarchive: true } };
+export const metadata: Metadata = { title: "AI Console | Radiant AI", robots: { index: false, follow: false, noarchive: true } };
 
 export default async function JevDeveloperPage() {
   const request = new Request("http://internal/developer/jev", { headers: await headers() });

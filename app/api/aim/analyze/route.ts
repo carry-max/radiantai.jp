@@ -16,7 +16,7 @@ async function post(request: Request) {
 
   const config = serviceConfig();
   if (!config.videoBackendUrl || !config.videoBackendToken) {
-    return Response.json({ error: "AIMクリップ解析は準備中です。" }, { status: 503 });
+    return Response.json({ error: "ミクロAI解析は準備中です。" }, { status: 503 });
   }
 
   let body: AimClipRequest;

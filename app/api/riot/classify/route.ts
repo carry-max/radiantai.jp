@@ -16,7 +16,7 @@ export const POST = withAuth(async (request: Request) => {
   if (!user) return Response.json({ error: "ログインしてください。" }, { status: 401 });
   const config = serviceConfig();
   if (!config.jev.apiKey) return Response.json({ error: "Riot AIの高速分類は準備中です。" }, { status: 503 });
-  if (!config.videoBackendUrl || !config.videoBackendToken) return Response.json({ error: "GPTによるマクロ整理は準備中です。" }, { status: 503 });
+  if (!config.videoBackendUrl || !config.videoBackendToken) return Response.json({ error: "AIによるマクロ整理は準備中です。" }, { status: 503 });
   if (!config.riotApproved || !riotRsoConfigured()) return Response.json({ error: "Riot公式承認後に利用できます。" }, { status: 503 });
   if (!await getRiotConnection(getMissionDb(), user.id)) return Response.json({ error: "Riotアカウントを連携してください。" }, { status: 403 });
   let input: z.infer<typeof requestSchema>;
@@ -42,7 +42,7 @@ export const POST = withAuth(async (request: Request) => {
     if (!macroResponse.ok || !macro?.review) throw new Error("MACRO_GPT_FAILED");
     if (batch) await completeRiotClassificationBatch(batch, new Map(classified.results.map(result => [result.id, result as unknown as Record<string, unknown>])));
     return Response.json({
-      model: `${config.jev.model} + ${macro.model || "GPT"}`,
+      model: "AI",
       results,
       failures: classified.failures,
       summary: summarizeJevResults(input.matches, results),
