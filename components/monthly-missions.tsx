@@ -91,7 +91,7 @@ export function MonthlyMissions({ summary, loading, error, notice, now, recordin
 
       <div className="monthly-bottom">
         <p><Clock3 /> 判定は切り出した場面が対象です。映像不足は保留、未達成でも減点なし。獲得したXPは期間終了後も残ります。</p>
-        {canRenew ? <Button disabled={loading || Boolean(error) || renewRequested} onClick={onRenew}><RotateCcw />{renewRequested ? "次の録画の解析で開始" : "次の30日を始める"}</Button> : !cycle ? <div className="monthly-empty-actions"><Button variant="outline" onClick={() => setExample((current) => !current)}>{example ? "例を閉じる" : "ミッションの例を見る"}</Button><Button onClick={onChooseVideo}><Film /> 最初の録画を選ぶ</Button></div> : phase === "active" ? <Button onClick={onChooseVideo}><Film /> 次の録画を選ぶ</Button> : <span className="monthly-completed"><Award /> 月間ボーナス獲得</span>}
+        {canRenew ? <Button disabled={loading || Boolean(error) || renewRequested} onClick={onRenew}><RotateCcw />{renewRequested ? "次の解析で開始" : "次の30日を始める"}</Button> : !cycle ? <div className="monthly-empty-actions"><Button variant="outline" onClick={() => setExample((current) => !current)}>{example ? "例を閉じる" : "ミッションの例を見る"}</Button><Button onClick={onChooseVideo}><Film /> 最初の分析を始める</Button></div> : phase === "active" ? <Button onClick={onChooseVideo}><Film /> 次の分析を開く</Button> : <span className="monthly-completed"><Award /> 月間ボーナス獲得</span>}
       </div>
       <p className="monthly-cost-note">作成・判定は通常のAIレビューと一緒に行います。プラン内での追加料金はありません。ミッション開始による購入・契約更新はありません。自分のAPIキーで試す場合はAPI利用料が別途発生します。XPは切り出した場面での達成記録で、ランクや試合全体の上達を保証するものではありません。</p>
     </section>

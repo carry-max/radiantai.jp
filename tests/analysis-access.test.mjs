@@ -84,14 +84,20 @@ test("paid quotas renew with the billing period, expired/future access cannot gr
   const db = database(); const now = Date.now();
   const entitlement = { plan: "card_monthly", status: "active", startsAt: new Date(now-1000).toISOString(), endsAt: new Date(now+86400000).toISOString(), remainingDays: 1 };
   for (let i=0;i<5;i++) await succeed(db, "a", `m${i}`, "1", entitlement);
-  await assert.rejects(access.reserveAnalysis(db, "a", entitlement, "m6", "1"), { status: 402 });
+  for (const id of ["m6", "m7"]) {
+    const borrowed = await access.reserveAnalysis(db, "a", entitlement, id, "1");
+    assert.match(borrowed.reservation.periodKey, /transfer-v1/);
+    await access.completeAnalysis(borrowed.reservation, { ok: true }, true);
+  }
+  await assert.rejects(access.reserveAnalysis(db, "a", entitlement, "m8", "1"), { status: 402 });
+  assert.equal((await access.readAllowance(db, "a", entitlement, "tactics:riot")).remaining, 48);
   assert.equal((await access.readAllowance(db, "a", {...entitlement, startsAt: new Date(now-500).toISOString(), endsAt: new Date(now+86400001).toISOString()})).remaining, 5);
   assert.equal(access.analysisPeriod({...entitlement, endsAt: new Date(now-1).toISOString()}).limit, 1);
   assert.equal(access.analysisPeriod({...entitlement, startsAt: new Date(now+1000).toISOString()}).limit, 1);
-  assert.equal(access.analysisPeriod({...entitlement, plan:"climb_card_monthly"}).limit, 10);
+  assert.equal(access.analysisPeriod({...entitlement, plan:"climb_card_monthly"}).limit, 5);
   db.sqlite.close();
 });
-test("paid tactics coaches have independent 50, 5 and 2 match buckets while AIM keeps its plan limit", async () => {
+test("paid plan has independent 50, 5 and 2 match buckets", async () => {
   const db = database(); const now = Date.now();
   const entitlement = { plan: "card_monthly", status: "active", startsAt: new Date(now-1000).toISOString(), endsAt: new Date(now+86400000).toISOString(), remainingDays: 1 };
   assert.equal(access.analysisPeriod(entitlement, now, "standard").limit, 5);

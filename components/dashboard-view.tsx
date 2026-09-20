@@ -23,7 +23,7 @@ export function DashboardView() {
   useEffect(() => { if (account.snapshot) queueMicrotask(() => void load()); }, [account.snapshot?.user?.id, load]);
   const signedIn = Boolean(account.snapshot?.user);
   return <div className="portal-page dashboard-page"><SiteHeader current="dashboard" /><main className="portal-main">
-    <PageLead eyebrow="PLAYER DASHBOARD" title="成長の現在地" description="立ち回りとAIMの評価、30日ミッション、次に取り組む課題を一か所で確認できます。" />
+    <PageLead eyebrow="PLAYER DASHBOARD" title="成長の現在地" description="立ち回り・ミクロ・Deepの評価、30日ミッション、次に取り組む課題を一か所で確認できます。" />
     {!account.snapshot ? <div className="portal-state"><LoaderCircle className="spin" /> アカウントを確認しています…</div> : !signedIn ? <section className="dashboard-gate"><BrainCircuit /><div><h2>記録を見るにはログイン</h2><p>成長グラフとミッションはアカウントごとに保存されます。</p></div><a className="portal-primary" href="/login">ログイン画面へ <ArrowRight /></a></section> : <>
       <section className="dashboard-quick"><article><small>NEXT ACTION</small><strong>{monthly?.cycle?.tasks?.[monthly.cycle.currentStep]?.title || "最初の録画を分析する"}</strong><a href="/analysis"><Film /> 分析画面を開く</a></article><article><small>PLAN</small><strong>利用状況を確認</strong><a href="/pricing"><Wallet /> 料金・プランを見る</a></article></section>
       <PlayerGrowth refreshKey={0} />

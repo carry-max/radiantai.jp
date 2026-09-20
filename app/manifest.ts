@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Radiant AI — VALORANT Replay Coach",
+    name: "Radiant AI — VALORANT Post-Match Coach",
     short_name: "Radiant AI",
-    description: "VALORANTの録画を試合後に振り返るAIコーチ",
+    description: "VALORANTの試合判断と撃ち合いを試合後に振り返るAIコーチ",
     start_url: "/analysis?source=windows-app",
     scope: "/",
     display: "standalone",

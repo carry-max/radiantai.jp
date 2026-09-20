@@ -18,6 +18,9 @@ async function postHandler(request: Request) {
   }
 
   const body = await request.json().catch(() => null) as { plan?: unknown } | null;
+  if (body?.plan !== "card_monthly" && body?.plan !== "paypay_30day") {
+    return Response.json({ error: "現在のプランは月額900円のRadiant AIのみです。" }, { status: 400 });
+  }
   const planDetails = getBillingPlanDetails(body?.plan);
   if (!planDetails) {
     return Response.json({ error: "料金プランを選び直してください。" }, { status: 400 });
@@ -47,8 +50,8 @@ async function postHandler(request: Request) {
   params.set("line_items[0][price_data][tax_behavior]", "inclusive");
   params.set("line_items[0][price_data][product_data][name]", planDetails.productName);
   params.set("line_items[0][price_data][product_data][description]", payPay
-    ? `立ち回り50/5/2試合＋AIM${planDetails.analysisCredits}試合・各最大3解析・${PAYPAY_ACCESS_DAYS}日・自動更新なし`
-    : `立ち回り50/5/2試合＋AIM${planDetails.analysisCredits}試合・各最大3解析・毎月自動更新`);
+    ? `立ち回り50試合＋ミクロ5試合＋Deep 2試合・未使用分は最大2試合振替・${PAYPAY_ACCESS_DAYS}日・自動更新なし`
+    : `立ち回り50試合＋ミクロ5試合＋Deep 2試合・未使用分は最大2試合振替・毎月自動更新`);
   params.set("custom_text[submit][message]", "1日12回まで。失敗・判定保留は試合枠を消費しません。購入後のお客様都合の返金はありません。サービス未提供等は販売条件に従います。");
   if (!payPay) params.set("line_items[0][price_data][recurring][interval]", "month");
   params.set("metadata[user_id]", user.id);

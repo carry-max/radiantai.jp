@@ -1,5 +1,5 @@
 .review-mode-bar { display: grid; grid-template-columns: minmax(300px, 1fr) 1fr; gap: 1.5rem; align-items: center; margin: 0 0 1.25rem; padding: 1rem; background: var(--ink-2); border: 1px solid var(--line); border-radius: .75rem; }
-.review-mode-switch { display: grid; grid-template-columns: minmax(0, 2fr) minmax(190px, .72fr); gap: .5rem; }
+.review-mode-switch { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; }
 .review-mode-family { display: grid; align-content: start; gap: .45rem; }
 .review-mode-family > span { color: var(--mint); font-size: .68rem; font-weight: 750; letter-spacing: .1em; }
 .review-mode-options { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; height: 100%; }
@@ -13,7 +13,18 @@
 .review-mode-switch svg { flex-shrink: 0; width: 23px; }
 .review-mode-price p { font-size: .875rem; line-height: 1.7; margin: .45rem 0; }
 .review-mode-price small { display: block; color: var(--muted-foreground); font-size: .8rem; line-height: 1.7; }
-.tactics-coach-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tactics-coach-options { grid-template-columns: 1fr; }
+.macro-data-flow { display: grid; grid-template-columns: minmax(240px,.85fr) minmax(0,1.15fr); gap: 1rem 1.5rem; margin: -.45rem 0 1.25rem; padding: 1.1rem; border: 1px solid rgba(120,230,194,.38); border-radius: .75rem; background: linear-gradient(120deg,rgba(120,230,194,.1),rgba(9,14,20,.98)); }
+.macro-data-flow h2 { margin: 0; font-size: 1.05rem; }
+.macro-data-flow div > p:last-child,.macro-data-flow > p { color: var(--muted-foreground); font-size: .78rem; line-height: 1.65; }
+.macro-data-flow ol { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1px; margin: 0; padding: 0; border: 1px solid #26333a; background: #26333a; list-style: none; }
+.macro-data-flow li { display: grid; align-content: center; min-height: 90px; padding: .75rem; background: #0d141b; }
+.macro-data-flow li span { color: var(--mint); font: 700 .62rem/1.2 var(--font-mono); }
+.macro-data-flow li strong { margin-top: .28rem; font-size: .86rem; }
+.macro-data-flow li small { margin-top: .22rem; color: #8c99aa; font-size: .68rem; }
+.macro-data-flow > p { grid-column: 1 / -1; display: flex; align-items: center; gap: .45rem; margin: 0; }
+.macro-data-flow > p svg { width: 15px; color: var(--mint); }
+.workspace-grid[hidden] { display: none; }
 .aim-autoclip-flow { display: grid; gap: 1rem; margin: -.45rem 0 1.25rem; padding: 1rem; overflow: hidden; border: 1px solid rgba(120,230,194,.38); border-radius: .75rem; background: linear-gradient(120deg, rgba(120,230,194,.1), rgba(9,14,20,.98) 48%, rgba(255,70,85,.055)); }
 .aim-autoclip-heading { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: .85rem; }
 .aim-autoclip-heading .pipeline-icon { color: var(--mint); border-color: rgba(120,230,194,.35); }
@@ -95,8 +106,8 @@
 .aim-offset-values span { padding: .5rem; background: #162a23; border-radius: .3rem; }
 .aim-offset-values b { display: block; font-variant-numeric: tabular-nums; color: var(--mint); }
 .review-mode-switch button:focus-visible, .aim-frame-tabs button:focus-visible, .aim-measurement summary:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
-@media (max-width: 1100px) { .tactics-coach-options { grid-template-columns: 1fr; } }
-@media (max-width: 850px) { .review-mode-bar { grid-template-columns: 1fr; gap: 1rem; } .tactics-coach-options { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 720px) { .tactics-coach-options { grid-template-columns: 1fr; } .riot-ai-gate { align-items: flex-start; flex-direction: column; } .riot-install-help { text-align: left; } .aim-autoclip-steps { grid-template-columns: 1fr; } .aim-autoclip-steps > div { min-height: 62px; } .aim-autoclip-steps > div:not(:last-child)::after { top: auto; right: 50%; bottom: -5px; transform: translateX(50%) rotate(135deg); } }
+@media (max-width: 1100px) { .review-mode-switch { grid-template-columns: 1fr; } }
+@media (max-width: 850px) { .review-mode-bar,.macro-data-flow { grid-template-columns: 1fr; gap: 1rem; } }
+@media (max-width: 720px) { .riot-ai-gate { align-items: flex-start; flex-direction: column; } .riot-install-help { text-align: left; } .aim-autoclip-steps,.macro-data-flow ol { grid-template-columns: 1fr; } .aim-autoclip-steps > div { min-height: 62px; } .aim-autoclip-steps > div:not(:last-child)::after { top: auto; right: 50%; bottom: -5px; transform: translateX(50%) rotate(135deg); } }
 @media (max-width: 620px) { .review-mode-switch { grid-template-columns: 1fr; } }
 @media (max-width: 520px) { .review-mode-switch button { padding: .7rem .5rem; gap: .4rem; } .review-mode-switch small { font-size: .8rem; } .aim-autoclip-heading { grid-template-columns: auto 1fr; } .aim-autoclip-heading > span:last-child { grid-column: 1 / -1; justify-self: start; } .aim-clip-queue { margin: .7rem .7rem 0; } .aim-capture-controls, .round-capture-controls, .aim-measurement { margin: .7rem; padding: .8rem; } .round-marker-grid { grid-template-columns: 1fr; } .aim-frame-tabs { grid-template-columns: repeat(3, 1fr); } .aim-coordinates > div { grid-template-columns: repeat(2, 1fr); } .aim-seek-controls > button:last-child { width: 100%; } }

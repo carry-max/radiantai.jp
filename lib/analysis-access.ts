@@ -4,6 +4,7 @@ import { serviceConfig } from "@/lib/service-config";
 import { TACTICS_COACH_LIMITS, type AnalysisAccessKind, type TacticsCoach } from "@/lib/tactics-coaches";
 
 export const SCENES_PER_MATCH = 3;
+export const TRANSFERABLE_MATCHES = 2;
 export type AllowanceBucket = {
   tier: string; periodKey: string; limit: number; used: number; remaining: number; scenesPerMatch: number;
   endsAt: string | null; recordings: { recordingId: string; scenesUsed: number }[];
@@ -12,6 +13,12 @@ export type AnalysisAllowance = AllowanceBucket & { tactics: Record<TacticsCoach
 export class AccessError extends Error {
   constructor(message: string, public status = 429) { super(message); }
 }
+const TRANSFER_KINDS: AnalysisAccessKind[] = ["standard", "tactics:riot", "tactics:deep"];
+function paidBasePeriodKey(entitlement: BillingEntitlement | null, now = Date.now()) {
+  return entitlement?.status === "active" && Date.parse(entitlement.startsAt) <= now && Date.parse(entitlement.endsAt) > now
+    ? `${entitlement.plan}:${entitlement.startsAt}:${entitlement.endsAt}` : null;
+}
+function transferPrefix(base: string, target: AnalysisAccessKind) { return `${base}:transfer-v1:to:${target}:from:`; }
 export function analysisPeriod(entitlement: BillingEntitlement | null, now = Date.now(), accessKind: AnalysisAccessKind = "standard") {
   const details = entitlement && getBillingPlanDetails(entitlement.plan);
   if (details && entitlement?.status === "active" && Date.parse(entitlement.startsAt) <= now && Date.parse(entitlement.endsAt) > now) {
@@ -30,7 +37,24 @@ export function analysisPeriod(entitlement: BillingEntitlement | null, now = Dat
 export async function readAllowance(db: MissionDatabase, userId: string, entitlement: BillingEntitlement | null, accessKind: AnalysisAccessKind = "standard"): Promise<AllowanceBucket> {
   const period = analysisPeriod(entitlement, Date.now(), accessKind);
   const rows = await db.prepare("SELECT recording_id, CAST(COUNT(*) AS INTEGER) AS scenes FROM analysis_records WHERE user_id = ? AND period_key = ? AND status = 'succeeded' GROUP BY recording_id").bind(userId, period.periodKey).all<{ recording_id: string; scenes: number }>();
-  return { ...period, used: rows.results.length, remaining: Math.max(0, period.limit - rows.results.length), scenesPerMatch: SCENES_PER_MATCH, recordings: rows.results.map(row => ({ recordingId: row.recording_id, scenesUsed: row.scenes })) };
+  const base = paidBasePeriodKey(entitlement);
+  const donated = base && TRANSFER_KINDS.includes(accessKind)
+    ? await db.prepare("SELECT CAST(COUNT(DISTINCT recording_id) AS INTEGER) AS count FROM analysis_records WHERE user_id = ? AND period_key LIKE ? AND status = 'succeeded'").bind(userId, `${base}:transfer-v1:%:from:${accessKind}`).first<{ count: number }>()
+    : null;
+  const used = rows.results.length + (donated?.count || 0);
+  return { ...period, used, remaining: Math.max(0, period.limit - used), scenesPerMatch: SCENES_PER_MATCH, recordings: rows.results.map(row => ({ recordingId: row.recording_id, scenesUsed: row.scenes })) };
+}
+
+async function transferPeriod(db: MissionDatabase, userId: string, entitlement: BillingEntitlement | null, target: AnalysisAccessKind, now: number) {
+  const base = paidBasePeriodKey(entitlement, now);
+  if (!base || !TRANSFER_KINDS.includes(target)) return null;
+  const used = await db.prepare("SELECT CAST(COUNT(DISTINCT recording_id) AS INTEGER) AS count FROM analysis_records WHERE user_id = ? AND period_key LIKE ? AND status IN ('pending','succeeded')").bind(userId, `${base}:transfer-v1:%`).first<{ count: number }>();
+  if ((used?.count || 0) >= TRANSFERABLE_MATCHES) return null;
+  for (const donor of TRANSFER_KINDS.filter(kind => kind !== target)) {
+    const allowance = await readAllowance(db, userId, entitlement, donor);
+    if (allowance.remaining > 0) return `${transferPrefix(base, target)}${donor}`;
+  }
+  return null;
 }
 export async function getAnalysisAllowance(userId: string): Promise<AnalysisAllowance> {
   const db = getMissionDb();
@@ -55,21 +79,30 @@ export async function reserveAnalysis(db: MissionDatabase, userId: string, entit
   const period = analysisPeriod(entitlement, now, accessKind);
   const reservation = { db, userId, token, id: crypto.randomUUID(), periodKey: period.periodKey, recordingId, sceneKey };
   try {
-    const cached = await db.prepare("SELECT id, result_json FROM analysis_records WHERE user_id = ? AND period_key = ? AND recording_id = ? AND scene_key = ? AND status = 'succeeded' ORDER BY created_at DESC LIMIT 1").bind(userId, period.periodKey, recordingId, sceneKey).first<{ id: string; result_json: string }>();
+    const base = paidBasePeriodKey(entitlement, now);
+    const targetTransferPattern = base ? `${transferPrefix(base, accessKind)}%` : "";
+    const cached = await db.prepare("SELECT id, result_json FROM analysis_records WHERE user_id = ? AND (period_key = ? OR (? <> '' AND period_key LIKE ?)) AND recording_id = ? AND scene_key = ? AND status = 'succeeded' ORDER BY created_at DESC LIMIT 1").bind(userId, period.periodKey, targetTransferPattern, targetTransferPattern, recordingId, sceneKey).first<{ id: string; result_json: string }>();
     if (cached) {
       await releaseAnalysis(reservation);
       return { cached: { ...JSON.parse(cached.result_json), analysisId: cached.id, cached: true }, reservation: null };
     }
     const allowance = await readAllowance(db, userId, entitlement, accessKind);
     const recording = allowance.recordings.find(item => item.recordingId === recordingId);
-    if (recording && recording.scenesUsed >= SCENES_PER_MATCH) throw new AccessError("この試合の3場面を解析済みです。別の試合を選んでください。", 402);
-    if (!recording && allowance.remaining <= 0) throw new AccessError("新しい試合の解析枠を使い切りました。料金・利用状況から確認できます。", 402);
+    const transferredRecording = targetTransferPattern ? await db.prepare("SELECT period_key, CAST(COUNT(*) AS INTEGER) AS scenes FROM analysis_records WHERE user_id = ? AND period_key LIKE ? AND recording_id = ? AND status = 'succeeded' GROUP BY period_key LIMIT 1").bind(userId, targetTransferPattern, recordingId).first<{ period_key: string; scenes: number }>() : null;
+    const scenesUsed = recording?.scenesUsed || transferredRecording?.scenes || 0;
+    if (scenesUsed >= SCENES_PER_MATCH) throw new AccessError("この試合の3場面を解析済みです。別の試合を選んでください。", 402);
+    if (transferredRecording) reservation.periodKey = transferredRecording.period_key;
+    else if (!recording && allowance.remaining <= 0) {
+      const transferredPeriod = await transferPeriod(db, userId, entitlement, accessKind, now);
+      if (!transferredPeriod) throw new AccessError("このモードの解析枠と振替可能枠を使い切りました。料金・利用状況から確認できます。", 402);
+      reservation.periodKey = transferredPeriod;
+    }
     const day = new Date(now + 9 * 3600000).toISOString().slice(0, 10);
     const userBudget = await db.prepare("INSERT INTO analysis_budgets (id, used) VALUES (?, 1) ON CONFLICT(id) DO UPDATE SET used = used + 1 WHERE used < 12 RETURNING used").bind(`user:${userId}:${day}`).first();
     if (!userBudget) throw new AccessError("本日の解析上限に達しました。翌日（日本時間）にお試しください。失敗・保留も1日12回の上限に含みます。");
     const globalBudget = await db.prepare("INSERT INTO analysis_budgets (id, used) VALUES (?, 1) ON CONFLICT(id) DO UPDATE SET used = used + 1 WHERE used < ? RETURNING used").bind(`service:${day}`, serviceConfig().dailyLimit).first();
     if (!globalBudget) throw new AccessError("本日の受付上限に達しました。翌日（日本時間）にお試しください。試合枠は消費していません。", 503);
-    await db.batch([db.prepare("INSERT INTO analysis_records (id,user_id,period_key,recording_id,scene_key,status,created_at) VALUES (?,?,?,?,?,'pending',?)").bind(reservation.id, userId, period.periodKey, recordingId, sceneKey, new Date(now).toISOString())]);
+    await db.batch([db.prepare("INSERT INTO analysis_records (id,user_id,period_key,recording_id,scene_key,status,created_at) VALUES (?,?,?,?,?,'pending',?)").bind(reservation.id, userId, reservation.periodKey, recordingId, sceneKey, new Date(now).toISOString())]);
     return { cached: null, reservation };
   } catch (error) { await releaseAnalysis(reservation); throw error; }
 }

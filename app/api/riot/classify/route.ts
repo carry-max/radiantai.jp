@@ -16,6 +16,7 @@ export const POST = withAuth(async (request: Request) => {
   if (!user) return Response.json({ error: "ログインしてください。" }, { status: 401 });
   const config = serviceConfig();
   if (!config.jev.apiKey) return Response.json({ error: "Riot AIの高速分類は準備中です。" }, { status: 503 });
+  if (!config.videoBackendUrl || !config.videoBackendToken) return Response.json({ error: "GPTによるマクロ整理は準備中です。" }, { status: 503 });
   if (!config.riotApproved || !riotRsoConfigured()) return Response.json({ error: "Riot公式承認後に利用できます。" }, { status: 503 });
   if (!await getRiotConnection(getMissionDb(), user.id)) return Response.json({ error: "Riotアカウントを連携してください。" }, { status: 403 });
   let input: z.infer<typeof requestSchema>;
@@ -29,14 +30,23 @@ export const POST = withAuth(async (request: Request) => {
     batch = reserved.batch;
     const pending = batch ? input.matches.filter(match => batch!.reservations.some(item => item.recordingId === match.id)) : [];
     const classified = pending.length ? await classifyJevMatches(pending, { apiKey: config.jev.apiKey, userId: user.id }) : { results: [], failures: [], summary: summarizeJevResults([], []) };
-    if (batch) await completeRiotClassificationBatch(batch, new Map(classified.results.map(result => [result.id, result as unknown as Record<string, unknown>])));
     const cachedResults = Object.values(reserved.cached) as unknown as JevMatchClassification[];
     const results = [...cachedResults, ...classified.results];
+    const macroResponse = await fetch(`${config.videoBackendUrl}/v1/macro/organize`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.videoBackendToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ matches: input.matches, classifications: results, summary: summarizeJevResults(input.matches, results), metadata: { userId: user.id } }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    const macro = await macroResponse.json().catch(() => null) as { review?: unknown; model?: string } | null;
+    if (!macroResponse.ok || !macro?.review) throw new Error("MACRO_GPT_FAILED");
+    if (batch) await completeRiotClassificationBatch(batch, new Map(classified.results.map(result => [result.id, result as unknown as Record<string, unknown>])));
     return Response.json({
-      model: config.jev.model,
+      model: `${config.jev.model} + ${macro.model || "GPT"}`,
       results,
       failures: classified.failures,
       summary: summarizeJevResults(input.matches, results),
+      review: macro.review,
       allowance: await getAnalysisAllowance(user.id),
     }, { status: classified.failures.length && !results.length ? 502 : 200 });
   } catch (error) {

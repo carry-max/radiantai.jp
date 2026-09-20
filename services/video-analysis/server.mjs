@@ -11,6 +11,7 @@ const MAX_BODY_BYTES = 14 * 1024 * 1024;
 const ALLOWED_MODELS = new Set(["gpt-5.6-luna", "gpt-5.6-sol"]);
 const backendToken = process.env.VIDEO_ANALYSIS_BACKEND_TOKEN?.trim() || "";
 const openAiKey = process.env.OPENAI_API_KEY?.trim() || "";
+const openAiReviewModel = process.env.OPENAI_REVIEW_MODEL?.trim() || "gpt-5.6-luna";
 const geminiKey = process.env.GEMINI_API_KEY?.trim() || "";
 const geminiAimModel = process.env.GEMINI_AIM_MODEL?.trim() || "gemini-3.8-flash";
 const databaseUrl = process.env.SUPABASE_DATABASE_URL?.trim() || "";
@@ -61,10 +62,42 @@ async function callOpenAi(payload) {
   return { status: upstream.status, body: await upstream.json() };
 }
 
-const AIM_MICRO_PROMPT = `あなたはVALORANTのAIMミクロ解析コーチです。入力はプレイヤーのデス前25秒からデス後5秒までのクリップです。
-映像で確認できる事実だけを使い、接敵前のクロスヘアプレイスメント、ピーク方法、ピークアドバンテージの作り方、ストッピング、初弾までの照準修正、バースト／スプレー制御、追いAIM、退避判断を分析してください。
-反応時間や命中率はフレームと音声から明確に測れる場合だけ述べ、通信遅延や見えない敵位置は断定しません。試合中の助言ではなく、試合後に直す行動を1つへ絞ります。
-JSONだけを返し、headline、observed（配列）、main_issue（category,severity,evidence）、improvements（配列）、next_focus、confidence、uncertaintyを含めてください。`;
+const AIM_MICRO_PROMPT = `あなたはVALORANT映像の観測担当です。入力はプレイヤーのデス前25秒からデス後5秒までのクリップです。
+映像で確認できる事実だけを使い、接敵前のクロスヘアプレイスメント、ピーク方法、ピークアドバンテージの作り方、ストッピング、初弾までの照準修正、バースト／スプレー制御、追いAIM、退避判断を観測してください。
+反応時間や命中率は明確に測れる場合だけ述べ、通信遅延や見えない敵位置、プレイヤーの意図は断定しません。改善提案はせず、GPTが整理できる観測事実をJSONで返してください。`;
+
+function openAiOutputText(body) {
+  return (body?.output || []).flatMap(item => item?.content || []).map(part => part?.text || "").join("");
+}
+
+async function organizeWithGpt(kind, evidence, metadata = {}) {
+  const instructions = kind === "micro"
+    ? "あなたはVALORANTの試合後ミクロコーチです。Geminiが映像から抽出した観測事実だけを根拠に、ピーク、クロスヘア、照準修正、ストッピング、射撃制御の改善点を日本語で整理してください。"
+    : "あなたはVALORANTの試合後マクロコーチです。Riot APIの試合データとJevの分類だけを根拠に、試合判断、苦手傾向、改善優先度を日本語で整理してください。映像を見たような表現は使わないでください。";
+  const payload = {
+    model: openAiReviewModel,
+    instructions: `${instructions}\n次の試合で実行する行動を1つに絞り、JSONだけを返してください。`,
+    input: [{ role: "user", content: [{ type: "input_text", text: `分析材料: ${JSON.stringify(evidence)}\n補足情報: ${JSON.stringify(metadata)}` }] }],
+    reasoning: { effort: "low" },
+    max_output_tokens: 2200,
+    store: false,
+    text: { format: { type: "json_schema", name: `${kind}_coaching`, strict: true, schema: {
+      type: "object", additionalProperties: false,
+      properties: {
+        headline: { type: "string" },
+        observed: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 6 },
+        main_issue: { type: "object", additionalProperties: false, properties: { category: { type: "string" }, severity: { type: "string", enum: ["low", "medium", "high"] }, evidence: { type: "string" } }, required: ["category", "severity", "evidence"] },
+        improvements: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 3 },
+        next_focus: { type: "string" }, confidence: { type: "string", enum: ["low", "medium", "high"] }, uncertainty: { type: "string" },
+      }, required: ["headline", "observed", "main_issue", "improvements", "next_focus", "confidence", "uncertainty"],
+    } } },
+  };
+  const response = await callOpenAi(payload);
+  if (response.status < 200 || response.status >= 300) throw new Error(`GPT organization failed: ${response.status}`);
+  const text = openAiOutputText(response.body);
+  if (!text) throw new Error("GPT organization returned no output");
+  return { model: openAiReviewModel, review: JSON.parse(text), usage: response.body.usage || {} };
+}
 
 async function uploadGeminiFile(bytes, mimeType, displayName) {
   if (!geminiKey) throw new Error("GEMINI_API_KEY is not configured");
@@ -129,7 +162,10 @@ async function analyzeAimClip(sourceUrl, metadata = {}) {
     const body = await response.json();
     if (!response.ok) throw new Error(`Gemini analysis failed: ${response.status}`);
     const text = body?.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("") || "";
-    return { model: geminiAimModel, review: JSON.parse(text), usage: body.usageMetadata || {} };
+    if (!text) throw new Error("Gemini analysis returned no output");
+    const findings = JSON.parse(text);
+    const organized = await organizeWithGpt("micro", findings, metadata);
+    return { model: `${geminiAimModel} + ${organized.model}`, findings, review: organized.review, usage: { gemini: body.usageMetadata || {}, gpt: organized.usage } };
   } finally {
     if (file?.name) void fetch(`https://generativelanguage.googleapis.com/v1beta/${file.name}?key=${encodeURIComponent(geminiKey)}`, { method: "DELETE" }).catch(() => undefined);
   }
@@ -213,6 +249,12 @@ createServer(async (request, response) => {
       if (typeof body.sourceUrl !== "string" || body.sourceUrl.length > 2500) return json(response, 400, { error: "invalid_source_url" });
       const metadata = body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata) ? body.metadata : {};
       return json(response, 200, await analyzeAimClip(body.sourceUrl, metadata));
+    }
+
+    if (request.method === "POST" && url.pathname === "/v1/macro/organize") {
+      const body = await readJson(request);
+      if (!Array.isArray(body.matches) || !Array.isArray(body.classifications) || body.matches.length > 50 || body.classifications.length > 50) return json(response, 400, { error: "invalid_macro_input" });
+      return json(response, 200, await organizeWithGpt("macro", { matches: body.matches, classifications: body.classifications, summary: body.summary || {} }, body.metadata || {}));
     }
 
     if (request.method === "POST" && url.pathname === "/v1/jobs") {

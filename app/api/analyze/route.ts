@@ -304,7 +304,7 @@ async function postHandler(request: Request) {
     if (!apiKey && !backendConfigured) return json({ ok: false, error: "AIレビューは現在準備中です。録画の切り出しとサンプルレビューをご利用いただけます。" }, 503);
     if (!ALLOWED_MODELS.has(model)) throw new RequestError("選択されたモデルは利用できません。");
     const frames = cleanFrames(body.frames);
-    if (mode === "aim" && !validAimSequence(frames.map(frame => frame.time), body.deathTimestamp)) throw new RequestError("AIMは基準時刻の前後0.4秒・6枚で解析します。AIMモードで切り出し直してください。");
+    if (mode === "aim" && !validAimSequence(frames.map(frame => frame.time), body.deathTimestamp)) throw new RequestError("ミクロは基準時刻の前後0.4秒・6枚で解析します。ミクロモードで切り出し直してください。");
     if (mode === "round" && !validRoundSequence(frames.map(frame => frame.time), body.roundStart, body.deathTimestamp)) throw new RequestError("ラウンド開始と終了を指定し、ラウンド全体を切り出し直してください。");
     const metadata = cleanMetadata(body.metadata);
     const previousMission = mode === "tactics" ? cleanText(body.previousMission, 320) : "";

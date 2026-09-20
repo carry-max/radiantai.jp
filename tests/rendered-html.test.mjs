@@ -17,7 +17,7 @@ test("standard Next renders every route and rejects forged proxy identity", {tim
       if(ready) break; await delay(200);
     }
     assert.ok(ready,logs);
-    for(const [path,content] of [["/","RADIANT REVIEW"],["/login","Googleでログイン"],["/dashboard","成長の現在地"],["/analysis","録画をドロップ"],["/pricing","料金はそのまま"],["/legal","特定商取引法"],["/privacy","動画全体"]]){
+    for(const [path,content] of [["/","RADIANT REVIEW"],["/login","Googleでログイン"],["/dashboard","成長の現在地"],["/analysis","立ち回り50試合"],["/pricing","月額900円"],["/legal","特定商取引法"],["/privacy","立ち回りモード"]]){
       const response=await fetch(origin+path); assert.equal(response.status,200,path); assert.ok((await response.text()).includes(content),path);
     }
     const old=await fetch(origin+"/account",{redirect:"manual"});

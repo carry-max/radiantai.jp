@@ -46,7 +46,7 @@ export const BILLING_PLAN_DETAILS: Record<BillingPlan, BillingPlanDetails> = {
     tierLabel: "Climb",
     paymentMethod: "card",
     priceYen: 1_800,
-    analysisCredits: 10,
+    analysisCredits: 5,
     productName: "Radiant Review Climb 月額プラン",
   },
   climb_paypay_30day: {
@@ -54,7 +54,7 @@ export const BILLING_PLAN_DETAILS: Record<BillingPlan, BillingPlanDetails> = {
     tierLabel: "Climb",
     paymentMethod: "paypay",
     priceYen: 1_800,
-    analysisCredits: 10,
+    analysisCredits: 5,
     productName: "Radiant Review Climb 30日パス",
   },
 };
