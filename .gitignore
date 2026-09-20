@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -38,6 +39,11 @@ yarn-error.log*
 next-env.d.ts
 *.tsbuildinfo
 /dist/
+apps/windows-overwolf/dist/
+apps/windows-overwolf/release/
+apps/windows-overwolf/native/target/
+apps/windows-overwolf/.radiantai-dev/
+apps/windows-overwolf/.toolchain/
 /outputs/
 /work/
 /.data/

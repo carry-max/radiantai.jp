@@ -1,0 +1,60 @@
+{
+  "name": "radiantai-windows",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RadiantAI Windows client for VALORANT post-match review",
+  "main": "dist/electron/electron/main.js",
+  "author": { "name": "RadiantAI" },
+  "productName": "RadiantAI Windows",
+  "overwolf": {
+    "packages": ["gep", "utility", "recorder"]
+  },
+  "scripts": {
+    "dev:ui": "vite",
+    "build:ui": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build:native": "cargo build --manifest-path native/Cargo.toml --release",
+    "build": "npm run build:ui && npm run build:electron && npm run build:native",
+    "start": "ow-electron .",
+    "build:ow-electron": "ow-electron-builder --publish=never",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.electron.json --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.116.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@overwolf/ow-electron": "42.7.1",
+    "@overwolf/ow-electron-builder": "26.9.3",
+    "@overwolf/ow-electron-packages-types": "1.1.11",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3",
+    "vite": "8.3.0"
+  },
+  "build": {
+    "appId": "jp.radiantai.windows",
+    "productName": "RadiantAI Windows",
+    "asar": true,
+    "nodeGypRebuild": false,
+    "directories": { "output": "release" },
+    "files": ["dist/**/*", "package.json"],
+    "extraResources": [
+      {
+        "from": "native/target/release/radiantai-native.exe",
+        "to": "native/radiantai-native.exe"
+      }
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "artifactName": "RadiantAI-Windows-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

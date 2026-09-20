@@ -10,8 +10,10 @@
     "build": "next build --webpack",
     "start": "next start",
     "test": "node --test --test-concurrency=1 tests/*.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "drizzle-kit generate"
+    "lint": "eslint . --ignore-pattern '**/dist/**' --ignore-pattern '**/release/**' --ignore-pattern '**/target/**' --ignore-pattern .next",
+    "db:generate": "drizzle-kit generate",
+    "windows:ui": "node node_modules/vite/bin/vite.js --config apps/windows-overwolf/vite.config.ts",
+    "windows:build": "node node_modules/vite/bin/vite.js build --config apps/windows-overwolf/vite.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

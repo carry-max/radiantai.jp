@@ -24,6 +24,8 @@ GoogleとX（OAuth 2.0）のProviderは、各Provider側のClient ID・Secretを
 
 動画をサーバー処理する場合だけStorageに非公開bucketを作り、短時間のsigned URLをRailwayへ渡します。公開bucketや恒久URLは使いません。
 
+Windows版のデスクリップ用に`radiantai-aim-clips`という非公開bucketを作ります。Vercelだけに`SUPABASE_SERVICE_ROLE_KEY`と`SUPABASE_AIM_CLIPS_BUCKET=radiantai-aim-clips`を設定します。Service Role KeyはWindowsアプリや`NEXT_PUBLIC_*`へ入れません。Windows版は利用者専用の署名付きアップロードURLを受け取り、解析後はVercelが一時クリップを削除します。
+
 ## 2. Railway動画解析サービス
 
 GitHubの同じリポジトリからサービスを作り、Root Directoryを`services/video-analysis`にします。DockerfileにはFFmpegが含まれます。
@@ -58,6 +60,8 @@ GitHubの`carry-max/radiantai.jp`をImportし、Framework PresetをNext.js、Pro
 | `SUPABASE_DATABASE_URL` | Sensitive | Supabase Pooler URL |
 | `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase Project URL |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public | Supabase publishable key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Sensitive | Windows版クリップの署名付きURL発行・削除。サーバー専用 |
+| `SUPABASE_AIM_CLIPS_BUCKET` | Server | 非公開bucket名。既定値は`radiantai-aim-clips` |
 | `AUTH_SITE_URL` | Server | `https://radiantai.jp` |
 | `NEXT_PUBLIC_SITE_URL` | Public | `https://radiantai.jp` |
 | `VIDEO_ANALYSIS_BACKEND_URL` | Server | Railway動画解析サービスのHTTPS URL |
@@ -90,3 +94,4 @@ Riot連携のコールバックURLは`https://radiantai.jp/auth/riot/callback`�
 4. 解析結果、解析枠、ミッション、成長グラフが同じSupabase DBへ保存される。
 5. FFmpeg抽出、同期解析、長時間ジョブをそれぞれ確認する。
 6. Stripeテストモードで購入、Webhook、更新停止を確認してから本番へ切り替える。
+7. Overwolf ElectronでVALORANTを起動し、Kill/Deathの検出、死亡前25秒＋死亡後5秒の保存、試合後のミクロ解析を確認する。

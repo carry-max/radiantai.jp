@@ -2,6 +2,8 @@
 
 Riot APIとOverwolfの自動クリップから、立ち回り・ミクロ・Deepをレビューする標準Next.js App Routerアプリです。
 
+Windowsクライアントは[`apps/windows-overwolf`](./apps/windows-overwolf)にあります。React + TypeScriptとOverwolf ElectronでVALORANTの起動・Kill・Deathを検出し、Rust + FFmpegで自動クリップとリプレイを前処理します。
+
 ## 起動
 
 Node.js 24 LTSを推奨します（最低22.16.0）。Windows、macOS、LinuxのNode.jsサーバーで実行できます。
@@ -85,6 +87,15 @@ GitHubへのpushは公開中のSitesやD1を更新しません。この移行で
 ```sh
 npm run build
 npm test
+```
+
+Windowsクライアントは独立して検証します。
+
+```sh
+cd apps/windows-overwolf
+npm ci
+npm run typecheck
+npm run build
 ```
 
 テストは標準Next.jsの本番サーバー起動、主要ルート、認証ヘッダー偽装の拒否、SQLiteの再読込・ロールバック、既存の解析枠・決済・ミッション・アカウント分離を確認します。Viteは既存単体テストでTypeScriptを読み込むためだけに使用します。

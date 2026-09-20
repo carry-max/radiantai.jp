@@ -1,0 +1,16 @@
+[package]
+name = "radiantai-native"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.100"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+sha2 = "0.10.9"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
