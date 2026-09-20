@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { ArrowLeft, BrainCircuit, CheckCircle2, KeyRound, LoaderCircle, Play, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -36,7 +37,7 @@ export function JevDeveloperView({ userId, email, serverConfigured }: { userId: 
     finally { setBusy(false); }
   }
   return <main className="jev-console">
-    <header className="jev-topbar"><a href="/"><ArrowLeft /> サイトへ戻る</a><span><ShieldCheck /> DEVELOPER ONLY</span></header>
+    <header className="jev-topbar"><Link href="/"><ArrowLeft /> サイトへ戻る</Link><span><ShieldCheck /> DEVELOPER ONLY</span></header>
     <section className="jev-hero"><div><p>RADIANT AI / INTERNAL</p><h1>Jev Match Classifier</h1><span>Riot API・Replayから整形した試合データを、最大50件まで高速分類します。</span></div><div className="jev-model"><BrainCircuit /><span><small>MODEL</small><strong>typesafe-ai/jev</strong></span></div></section>
     <section className="jev-flow" aria-label="解析フロー"><span>Riot API / Replay</span><i>→</i><span>Jev AI</span><i>→</i><span>50試合を分類</span><i>→</i><span>Deep解析候補</span></section>
     <section className="jev-grid">

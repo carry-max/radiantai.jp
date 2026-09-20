@@ -33,6 +33,8 @@ Railwayへ次を登録します。
 | 変数 | 公開範囲 | 用途 |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | Secret | 運営用AIキー |
+| `GEMINI_API_KEY` | Secret | AIMデスクリップのミクロ解析用 |
+| `GEMINI_AIM_MODEL` | Server | `gemini-3.8-flash` |
 | `VIDEO_ANALYSIS_BACKEND_TOKEN` | Secret | Vercelとの共有トークン |
 | `SUPABASE_DATABASE_URL` | Secret | Supabase Pooler URL。バックグラウンドジョブ保存用 |
 | `SUPABASE_STORAGE_HOST` | Server | 例：`<project-ref>.supabase.co`。FFmpeg入力URLの送信先制限 |
@@ -40,6 +42,7 @@ Railwayへ次を登録します。
 公開ドメインを1つ発行します。`/health`は認証不要、`/v1/analyze`、`/v1/frames`、`/v1/jobs`は共有トークンが必要です。
 
 - `/v1/analyze`：Vercelが作成した画像解析リクエストをOpenAIへ送る
+- `/v1/aim/analyze`：非公開Storageの短時間signed URLから30秒クリップを取得し、Gemini 3.8 Flashでミクロ解析する
 - `/v1/frames`：Supabase Storageの短時間signed URLからFFmpegで2〜6枚を抽出
 - `/v1/jobs`：長時間解析をSupabase DBへ登録し、バックグラウンド実行
 - `/v1/jobs/:id`：ジョブ状態と結果を取得

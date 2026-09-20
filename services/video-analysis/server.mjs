@@ -11,6 +11,8 @@ const MAX_BODY_BYTES = 14 * 1024 * 1024;
 const ALLOWED_MODELS = new Set(["gpt-5.6-luna", "gpt-5.6-sol"]);
 const backendToken = process.env.VIDEO_ANALYSIS_BACKEND_TOKEN?.trim() || "";
 const openAiKey = process.env.OPENAI_API_KEY?.trim() || "";
+const geminiKey = process.env.GEMINI_API_KEY?.trim() || "";
+const geminiAimModel = process.env.GEMINI_AIM_MODEL?.trim() || "gemini-3.8-flash";
 const databaseUrl = process.env.SUPABASE_DATABASE_URL?.trim() || "";
 const storageHost = process.env.SUPABASE_STORAGE_HOST?.trim().toLowerCase() || "";
 const sql = databaseUrl ? postgres(databaseUrl, { ssl: "require", max: 2, idle_timeout: 20 }) : null;
@@ -57,6 +59,80 @@ async function callOpenAi(payload) {
     signal: AbortSignal.timeout(120_000),
   });
   return { status: upstream.status, body: await upstream.json() };
+}
+
+const AIM_MICRO_PROMPT = `あなたはVALORANTのAIMミクロ解析コーチです。入力はプレイヤーのデス前25秒からデス後5秒までのクリップです。
+映像で確認できる事実だけを使い、接敵前のクロスヘアプレイスメント、ピーク方法、ピークアドバンテージの作り方、ストッピング、初弾までの照準修正、バースト／スプレー制御、追いAIM、退避判断を分析してください。
+反応時間や命中率はフレームと音声から明確に測れる場合だけ述べ、通信遅延や見えない敵位置は断定しません。試合中の助言ではなく、試合後に直す行動を1つへ絞ります。
+JSONだけを返し、headline、observed（配列）、main_issue（category,severity,evidence）、improvements（配列）、next_focus、confidence、uncertaintyを含めてください。`;
+
+async function uploadGeminiFile(bytes, mimeType, displayName) {
+  if (!geminiKey) throw new Error("GEMINI_API_KEY is not configured");
+  const start = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(geminiKey)}`, {
+    method: "POST",
+    headers: {
+      "X-Goog-Upload-Protocol": "resumable",
+      "X-Goog-Upload-Command": "start",
+      "X-Goog-Upload-Header-Content-Length": String(bytes.length),
+      "X-Goog-Upload-Header-Content-Type": mimeType,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ file: { display_name: displayName } }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!start.ok) throw new Error(`Gemini upload start failed: ${start.status}`);
+  const uploadUrl = start.headers.get("x-goog-upload-url");
+  if (!uploadUrl) throw new Error("Gemini upload URL is missing");
+  const uploaded = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { "X-Goog-Upload-Offset": "0", "X-Goog-Upload-Command": "upload, finalize", "Content-Length": String(bytes.length) },
+    body: bytes,
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!uploaded.ok) throw new Error(`Gemini upload failed: ${uploaded.status}`);
+  return (await uploaded.json()).file;
+}
+
+async function waitForGeminiFile(file) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    if (file?.state === "ACTIVE") return file;
+    if (file?.state === "FAILED") throw new Error("Gemini video processing failed");
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${file.name}?key=${encodeURIComponent(geminiKey)}`, { signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) throw new Error(`Gemini file status failed: ${response.status}`);
+    file = await response.json();
+  }
+  throw new Error("Gemini video processing timed out");
+}
+
+async function analyzeAimClip(sourceUrl, metadata = {}) {
+  const clipResponse = await fetch(allowedStorageUrl(sourceUrl), { signal: AbortSignal.timeout(120_000) });
+  if (!clipResponse.ok) throw new Error(`clip download failed: ${clipResponse.status}`);
+  const declaredLength = Number(clipResponse.headers.get("content-length") || 0);
+  if (declaredLength > 120 * 1024 * 1024) throw new Error("clip_too_large");
+  const bytes = Buffer.from(await clipResponse.arrayBuffer());
+  if (!bytes.length || bytes.length > 120 * 1024 * 1024) throw new Error("clip_too_large");
+  const mimeType = clipResponse.headers.get("content-type")?.split(";")[0] || "video/mp4";
+  let file;
+  try {
+    file = await uploadGeminiFile(bytes, mimeType, `radiantai-aim-${randomUUID()}`);
+    file = await waitForGeminiFile(file);
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiAimModel)}:generateContent?key=${encodeURIComponent(geminiKey)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ file_data: { mime_type: mimeType, file_uri: file.uri } }, { text: `${AIM_MICRO_PROMPT}\n試合情報: ${JSON.stringify(metadata)}` }] }],
+        generationConfig: { responseMimeType: "application/json", thinkingConfig: { thinkingLevel: "low" } },
+      }),
+      signal: AbortSignal.timeout(180_000),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(`Gemini analysis failed: ${response.status}`);
+    const text = body?.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("") || "";
+    return { model: geminiAimModel, review: JSON.parse(text), usage: body.usageMetadata || {} };
+  } finally {
+    if (file?.name) void fetch(`https://generativelanguage.googleapis.com/v1beta/${file.name}?key=${encodeURIComponent(geminiKey)}`, { method: "DELETE" }).catch(() => undefined);
+  }
 }
 
 async function ensureJobsTable() {
@@ -120,7 +196,7 @@ createServer(async (request, response) => {
   try {
     const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
     if (request.method === "GET" && url.pathname === "/health") {
-      return json(response, 200, { status: "ok", role: "video-analysis", database: Boolean(sql), ffmpeg: true });
+      return json(response, 200, { status: "ok", role: "video-analysis", database: Boolean(sql), ffmpeg: true, aim: { configured: Boolean(geminiKey), model: geminiAimModel } });
     }
     if (!authorized(request)) return json(response, 401, { error: "unauthorized" });
 
@@ -129,6 +205,14 @@ createServer(async (request, response) => {
       if (!validOpenAiRequest(body.request)) return json(response, 400, { error: "invalid_request" });
       const result = await callOpenAi(body.request);
       return json(response, result.status, result.body);
+    }
+
+    if (request.method === "POST" && url.pathname === "/v1/aim/analyze") {
+      if (!geminiKey) return json(response, 503, { error: "GEMINI_API_KEY is not configured" });
+      const body = await readJson(request);
+      if (typeof body.sourceUrl !== "string" || body.sourceUrl.length > 2500) return json(response, 400, { error: "invalid_source_url" });
+      const metadata = body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata) ? body.metadata : {};
+      return json(response, 200, await analyzeAimClip(body.sourceUrl, metadata));
     }
 
     if (request.method === "POST" && url.pathname === "/v1/jobs") {
@@ -161,7 +245,7 @@ createServer(async (request, response) => {
     return json(response, 404, { error: "not_found" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "internal_error";
-    const status = message === "request_too_large" ? 413 : message === "invalid_storage_url" ? 400 : 500;
+    const status = ["request_too_large", "clip_too_large"].includes(message) ? 413 : message === "invalid_storage_url" ? 400 : 500;
     return json(response, status, { error: status === 500 ? "internal_error" : message });
   }
 }).listen(PORT, "0.0.0.0", () => {

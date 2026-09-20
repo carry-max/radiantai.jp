@@ -17,6 +17,7 @@ import {
   Eye,
   EyeOff,
   Film,
+  Gamepad2,
   History,
   KeyRound,
   LoaderCircle,
@@ -384,6 +385,7 @@ export function AnalysisWorkspace() {
   const [showKey, setShowKey] = useState(false);
   const [model, setModel] = useState("gpt-5.6-luna");
   const [fileName, setFileName] = useState("");
+  const [aimClips, setAimClips] = useState<File[]>([]);
   const [matchId, setMatchId] = useState("");
   const [recordingId, setRecordingId] = useState("");
   const [monthly, setMonthly] = useState<MonthlySummary | null>(null);
@@ -651,6 +653,18 @@ export function AnalysisWorkspace() {
     setStatus({ message: "録画の情報を読み込んでいます…", tone: "neutral" });
     if (videoRef.current) { videoRef.current.src = url; videoRef.current.load(); }
   }, []);
+
+  const loadSelectedVideos = useCallback((files?: FileList | null) => {
+    if (!files?.length) return;
+    const videos = Array.from(files).filter(isVideoFile);
+    if (!videos.length) {
+      setStatus({ message: "MP4・WebM・MOVの動画を選んでください。", tone: "error" });
+      return;
+    }
+    if (reviewMode === "aim") setAimClips(videos.slice(0, 30));
+    else setAimClips([]);
+    loadVideo(videos[0]);
+  }, [loadVideo, reviewMode]);
 
   const captureFramesAt = useCallback(async (markedAt: number, source: "auto" | "manual") => {
     const video = videoRef.current;
@@ -1247,7 +1261,7 @@ export function AnalysisWorkspace() {
         </Link>
         <div className="top-actions">
           <AccountLink />
-          <span className="local-state"><ShieldCheck aria-hidden="true" /> 動画は端末内で処理</span>
+          <span className="local-state"><ShieldCheck aria-hidden="true" /> 録画は端末に保存</span>
           <Button asChild variant="outline" className="top-growth"><a href="/dashboard"><Activity /> ダッシュボード</a></Button>
           <Button asChild variant="outline" className="top-pricing"><a href="/pricing"><Wallet /> {entitlement?.status === "active" ? `残り${entitlement.remainingDays}日` : "料金・利用状況"}</a></Button>
           <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)} className="top-settings"><Settings2 /> 解析について</Button>
@@ -1260,7 +1274,7 @@ export function AnalysisWorkspace() {
             <p className="eyebrow">試合後の振り返り · 日本語AIレビュー</p>
             <h1 id="page-title">1デスを、次のラウンドの武器に。</h1>
             <p className="intro-copy">同じ死に方を、次の試合で繰り返さない。録画からデス候補を見つけ、まず直すことを1つに絞ります。</p>
-            <p className="intro-privacy">動画は端末内で処理。AI解析時だけ、最大6枚の画像と入力した試合情報を送信します。</p>
+            <p className="intro-privacy">{reviewMode === "aim" ? "自動保存した30秒クリップは試合後、選択したものだけをGeminiへ送信します。" : "動画は端末内で処理。AI解析時だけ、最大6枚の画像と入力した試合情報を送信します。"}</p>
             <Button type="button" variant="ghost" className="intro-sample" disabled={isAnalyzing} onClick={() => finishReview(demoReview(undefined, reviewMode), "demo", "サンプルです。あなたの録画は解析せず、履歴・XP・解析枠を変更しません。")}><Play /> 録画なしでサンプルを見る</Button>
           </div>
           <div className="capability-row" aria-label="対応範囲">
@@ -1270,25 +1284,40 @@ export function AnalysisWorkspace() {
 
         <section className="review-mode-bar" aria-label="解析モード">
           <div className="review-mode-switch" role="group" aria-label="目的を選ぶ">
-            <div className="review-mode-family tactics-coach-family"><span>立ち回りモード</span><div className="review-mode-options tactics-coach-options">
+            <div className="review-mode-family tactics-coach-family"><span>マクロモード</span><div className="review-mode-options tactics-coach-options">
               <button type="button" aria-pressed={reviewMode !== "aim" && tacticsCoach === "riot"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => selectTacticsCoach("riot")}><Zap /><span><strong>Riot AI <em>50試合</em></strong><small>Riot連携＋Windowsアプリ</small></span></button>
               <button type="button" aria-pressed={reviewMode !== "aim" && tacticsCoach === "replay"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => selectTacticsCoach("replay")}><MapPinned /><span><strong>Replay Coach <em>5試合</em></strong><small>デス原因・判断・位置取り</small></span></button>
               <button type="button" aria-pressed={reviewMode !== "aim" && tacticsCoach === "deep"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => selectTacticsCoach("deep")}><UsersRound /><span><strong>Deep Coach <em>2試合</em></strong><small>配置・情報・ローテ・敗因</small></span></button>
             </div></div>
             <div className="review-mode-family"><span>AIMモード</span><div className="review-mode-options single">
-              <button type="button" aria-pressed={reviewMode === "aim"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => changeReviewMode("aim")}><Crosshair /><span><strong>AIMレビュー</strong><small>従来のプラン枠を維持</small></span></button>
+              <button type="button" aria-pressed={reviewMode === "aim"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => changeReviewMode("aim")}><Crosshair /><span><strong>AIMミクロ解析</strong><small>Overwolfデスクリップ</small></span></button>
             </div></div>
           </div>
-          <div className="review-mode-price"><Badge variant="outline">料金はそのまま</Badge><p>立ち回りだけ専用枠へ変更。Riot AI 50試合・Replay Coach 5試合・Deep Coach 2試合です。</p><small>AIMは現在のプラン枠を維持します。各試合は最大3解析、保存済み結果の再表示は消費しません。</small></div>
+          <div className="review-mode-price"><Badge variant="outline">料金はそのまま</Badge><p>マクロはRiot AI 50試合・Replay Coach 5試合・Deep Coach 2試合です。</p><small>AIMも現在のプラン枠を維持します。各試合は最大3解析、保存済み結果の再表示は消費しません。</small></div>
         </section>
+        {reviewMode === "aim" ? <section className="aim-autoclip-flow" aria-label="AIM自動クリップ解析の流れ">
+          <div className="aim-autoclip-heading">
+            <span className="pipeline-icon"><Gamepad2 /></span>
+            <div><p className="eyebrow">AIM / AUTOMATIC DEATH CLIPS</p><h2>デスごとに30秒を保存し、試合後にミクロ解析</h2><p>試合中は録画だけを行い、解析は試合終了後にまとめて実行します。</p></div>
+            <Badge>Gemini 3.8 Flash</Badge>
+          </div>
+          <div className="aim-autoclip-steps">
+            <div><small>01 / IN MATCH</small><strong>Overwolf</strong><span>VALORANTを検出</span></div>
+            <div><small>02 / EVENT</small><strong>death検出</strong><span>自分のデスだけを受信</span></div>
+            <div><small>03 / WINDOWS</small><strong>自動クリップ</strong><span>死亡前25秒＋死亡後5秒</span></div>
+            <div><small>04 / AFTER MATCH</small><strong>クリップ一覧</strong><span>デスごとに選択・確認</span></div>
+            <div><small>05 / AI REVIEW</small><strong>ミクロ解析</strong><span>照準・ピーク・撃ち合い</span></div>
+          </div>
+          <p className="aim-autoclip-note"><ShieldCheck /> Overwolfのdeathイベントを保存トリガーに使います。試合中にAI解析や助言は表示しません。</p>
+        </section> : null}
         {reviewMode !== "aim" && tacticsCoach === "riot" ? <section className={`riot-ai-gate ${riotReady ? "ready" : "pending"}`} aria-live="polite">
           <div><Zap /><span><strong>Riot AI / 最大50試合</strong><small>{riotReady ? `${account.snapshot?.riot.connection?.displayName}・Windowsアプリから利用できます` : !account.snapshot?.riot.configured ? "Riot公式承認後にRSOを有効化します" : !account.snapshot.riot.connection ? "Riotアカウント連携が必要です" : !isWindows ? "Windows版が必要です" : "Windowsへアプリをインストールして起動してください"}</small></span></div>
           {!account.snapshot?.riot.connection ? <Button asChild variant="outline"><Link href="/account">Riot連携を設定</Link></Button> : !isWindowsApp && installPrompt ? <Button type="button" variant="outline" onClick={() => void installWindowsApp()}><MonitorUp /> Windowsにインストール</Button> : !isWindowsApp ? <span className="riot-install-help">Edge / Chromeのメニューから「アプリをインストール」を選択</span> : <Badge>{riotReady ? "利用可能" : "設定待ち"}</Badge>}
         </section> : null}
         <section className="pipeline" aria-label="処理の流れ">
-          <div><span className="pipeline-icon"><Play /></span><p><small>01 / LOCAL</small><strong>録画を選択</strong></p></div>
-          <div><span className="pipeline-icon"><ScanLine /></span><p><small>02 / {reviewMode === "aim" ? "SELECT MOMENT" : reviewMode === "round" ? "SELECT ROUND" : "AUTO DETECT"}</small><strong>{reviewMode === "aim" ? "撃ち始め付近で停止" : reviewMode === "round" ? "開始と終了を指定" : "デスを自動検出"}</strong></p></div>
-          <div><span className="pipeline-icon"><BrainCircuit /></span><p><small>03 / REVIEW</small><strong>{reviewMode === "aim" ? "0.8秒の6枚を確認" : reviewMode === "round" ? "ラウンド全体を解析" : "前20秒〜後5秒を解析"}</strong></p></div>
+          <div><span className="pipeline-icon"><Play /></span><p><small>01 / LOCAL</small><strong>{reviewMode === "aim" ? "デスクリップを選択" : "録画を選択"}</strong></p></div>
+          <div><span className="pipeline-icon"><ScanLine /></span><p><small>02 / {reviewMode === "aim" ? "VERIFY DUEL" : reviewMode === "round" ? "SELECT ROUND" : "AUTO DETECT"}</small><strong>{reviewMode === "aim" ? "撃ち合いを確認" : reviewMode === "round" ? "開始と終了を指定" : "デスを自動検出"}</strong></p></div>
+          <div><span className="pipeline-icon"><BrainCircuit /></span><p><small>03 / REVIEW</small><strong>{reviewMode === "aim" ? "Geminiでミクロ解析" : reviewMode === "round" ? "ラウンド全体を解析" : "前20秒〜後5秒を解析"}</strong></p></div>
           <aside><Zap /> 自動検出・成長分析は全ユーザー利用可</aside>
         </section>
 
@@ -1296,9 +1325,13 @@ export function AnalysisWorkspace() {
           <div className="primary-column">
             <section className="panel video-panel">
               <SectionHeading
-                step="01" eyebrow="LOAD LOCAL VOD" title="試合録画"
-                trailing={<><input ref={fileInputRef} id="videoInput" type="file" accept="video/mp4,video/webm,video/quicktime,video/*" hidden onChange={(event) => loadVideo(event.target.files?.[0])} /><Button asChild className="upload-button"><label htmlFor="videoInput"><UploadCloud /> 動画を選択</label></Button></>}
-              />
+                 step="01" eyebrow={reviewMode === "aim" ? "LOAD DEATH CLIPS" : "LOAD LOCAL VOD"} title={reviewMode === "aim" ? "デスクリップ" : "試合録画"}
+                 trailing={<><input ref={fileInputRef} id="videoInput" type="file" multiple={reviewMode === "aim"} accept="video/mp4,video/webm,video/quicktime,video/*" hidden onChange={(event) => loadSelectedVideos(event.target.files)} /><Button asChild className="upload-button"><label htmlFor="videoInput"><UploadCloud /> {reviewMode === "aim" ? "クリップを選択" : "動画を選択"}</label></Button></>}
+               />
+              {reviewMode === "aim" && aimClips.length ? <div className="aim-clip-queue" aria-label="試合後のデスクリップ一覧">
+                <div><strong>試合後のクリップ</strong><span>{aimClips.length}件</span></div>
+                <ol>{aimClips.map((clip, index) => <li key={`${clip.name}:${clip.size}:${clip.lastModified}`}><button type="button" aria-pressed={fileName === clip.name} onClick={() => loadVideo(clip)}><span>CLIP {String(index + 1).padStart(2, "0")}</span><strong>{clip.name}</strong><small>{Math.max(1, Math.round(clip.size / 1024 / 1024))} MB</small></button></li>)}</ol>
+              </div> : null}
               <div
                 className={`video-shell ${dragging ? "is-dragging" : ""}`}
                 onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
@@ -1383,7 +1416,7 @@ export function AnalysisWorkspace() {
                 </Button>
               </div>
               </> : reviewMode === "aim" ? <div className="aim-capture-controls">
-                <div><p className="eyebrow">AIM / 0.8 SECOND WINDOW</p><h3>撃ち始め付近を、6枚で見比べる</h3><p>自分の視点の録画を使い、同じ敵と照準が見える時刻で停止してください。60fpsの録画を推奨します。</p></div>
+                <div><p className="eyebrow">MANUAL CHECK / 0.8 SECOND WINDOW</p><h3>クリップ内の撃ち合いを、6枚で確認</h3><p>Windowsアプリの自動クリップ、または手元の録画を使えます。同じ敵と照準が見える時刻で停止してください。</p></div>
                 <label>切り出す範囲<NativeSelect value={aimCrop} disabled={isCapturing || isAnalyzing} onChange={event => changeReviewMode("aim", event.target.value as AimCrop)}><NativeSelectOption value="center">中央を拡大（照準付近）</NativeSelectOption><NativeSelectOption value="full">全画面（敵が中央にいないとき）</NativeSelectOption></NativeSelect></label>
                 <div className="aim-seek-controls">{[-0.03, 0.03].map(delta => <Button key={delta} variant="outline" size="sm" disabled={!videoReady || isCapturing || isAnalyzing} onClick={() => { const video = videoRef.current; if (video) { video.pause(); video.currentTime = Math.max(0, Math.min(video.duration - .05, video.currentTime + delta)); } }}>{delta < 0 ? "−0.03秒" : "＋0.03秒"}</Button>)}<Button disabled={!videoReady || videoTooLong || isCapturing || isAnalyzing} onClick={() => void captureFrames()}><Crosshair /> この時刻のAIMを切り出す</Button></div>
                 <p className="aim-method-note">選んだ時刻の前0.4秒〜後0.4秒。中央拡大は固定の正方形です。敵・照準が隠れている場合は範囲や時刻を変えてください。基準時刻は実際の初弾時刻を自動検出したものではありません。</p>
@@ -1455,8 +1488,8 @@ export function AnalysisWorkspace() {
                 {isAnalyzing ? <LoaderCircle className="spin" /> : <Sparkles />}{isAnalyzing ? "AI解析中…" : reviewMode === "round" ? "このラウンドをレビュー" : "この場面の改善点を確認"}
               </Button>
               <Button type="button" variant="ghost" disabled={isAnalyzing} onClick={() => finishReview(demoReview(selectedTags[0], reviewMode), "demo", "デモレビューを表示しました。月間ミッション・XPは変更されません。")} className="demo-button"><Play /> サンプルレビューを見る</Button>
-              {reviewMode === "aim" ? <p className="aim-result-note">AIMは照準の位置関係を確認し、根拠がある評価を成長グラフへ記録します。反応速度・命中率・入力の正確な時刻は測定できません。月間ミッションとXPはデス原因モードで判定します。</p> : reviewMode === "round" ? <p className="aim-result-note">ラウンドレビューは初期配置から敗因までを確認します。画像間の通話や画面外の動きは断定せず、月間ミッションとXPの判定対象にはしません。</p> : null}
-              <p className="cost-note">最大6枚の画像・試合情報・練習課題をOpenAIへ送ります。動画全体・音声は送りません。{apiKey.trim() ? "自分のAPIキーでの解析は別途API料金が発生します。" : "無料体験・有料プランの範囲内では追加料金はありません。"}</p>
+              {reviewMode === "aim" ? <p className="aim-result-note">Windowsアプリの30秒クリップはGemini 3.8 Flashで、ピーク方法・クロスヘア・照準修正・ストッピング・射撃制御を試合後に解析します。この画面の6枚確認は、細かい照準位置を見直す手動機能です。</p> : reviewMode === "round" ? <p className="aim-result-note">ラウンドレビューは初期配置から敗因までを確認します。画像間の通話や画面外の動きは断定せず、月間ミッションとXPの判定対象にはしません。</p> : null}
+              <p className="cost-note">{reviewMode === "aim" ? "自動クリップは選択した30秒動画をGeminiへ送信します。手動確認は最大6枚の画像だけをOpenAIへ送ります。" : "最大6枚の画像・試合情報・練習課題をOpenAIへ送ります。動画全体・音声は送りません。"}{apiKey.trim() ? "自分のAPIキーでの解析は別途API料金が発生します。" : "無料体験・有料プランの範囲内では追加料金はありません。"}</p>
             </section>
 
             <section className="panel result-panel" ref={resultRef}>

@@ -14,6 +14,29 @@
 .review-mode-price p { font-size: .875rem; line-height: 1.7; margin: .45rem 0; }
 .review-mode-price small { display: block; color: var(--muted-foreground); font-size: .8rem; line-height: 1.7; }
 .tactics-coach-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.aim-autoclip-flow { display: grid; gap: 1rem; margin: -.45rem 0 1.25rem; padding: 1rem; overflow: hidden; border: 1px solid rgba(120,230,194,.38); border-radius: .75rem; background: linear-gradient(120deg, rgba(120,230,194,.1), rgba(9,14,20,.98) 48%, rgba(255,70,85,.055)); }
+.aim-autoclip-heading { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: .85rem; }
+.aim-autoclip-heading .pipeline-icon { color: var(--mint); border-color: rgba(120,230,194,.35); }
+.aim-autoclip-heading h2 { margin: 0; font-size: 1rem; }
+.aim-autoclip-heading p:not(.eyebrow) { margin: .25rem 0 0; color: var(--muted-foreground); font-size: .78rem; line-height: 1.55; }
+.aim-autoclip-heading > span:last-child { background: rgba(120,230,194,.12); color: var(--mint); }
+.aim-autoclip-steps { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 1px; overflow: hidden; border: 1px solid #26333a; background: #26333a; }
+.aim-autoclip-steps > div { position: relative; display: grid; align-content: center; min-height: 84px; padding: .75rem; background: #0d141b; }
+.aim-autoclip-steps > div:not(:last-child)::after { position: absolute; top: 50%; right: -5px; z-index: 1; width: 9px; height: 9px; content: ""; border-top: 1px solid var(--mint); border-right: 1px solid var(--mint); background: #0d141b; transform: translateY(-50%) rotate(45deg); }
+.aim-autoclip-steps small { color: #6f7d8d; font: 700 .59rem/1.2 var(--font-mono); letter-spacing: .08em; }
+.aim-autoclip-steps strong { margin-top: .25rem; font-size: .85rem; }
+.aim-autoclip-steps span { margin-top: .2rem; color: #94a0af; font-size: .69rem; line-height: 1.45; }
+.aim-autoclip-note { display: flex; align-items: center; gap: .5rem; margin: 0; color: #a8b8b4; font-size: .72rem; line-height: 1.55; }
+.aim-autoclip-note svg { width: 15px; flex: 0 0 auto; color: var(--mint); }
+.aim-clip-queue { display: grid; gap: .6rem; margin: 1rem 1rem 0; padding: .8rem; border: 1px solid #2b5147; border-radius: .5rem; background: #0b1514; }
+.aim-clip-queue > div { display: flex; justify-content: space-between; gap: .75rem; font-size: .78rem; }
+.aim-clip-queue > div span { color: var(--mint); font-family: var(--font-mono); }
+.aim-clip-queue ol { display: flex; gap: .45rem; margin: 0; padding: 0 0 .2rem; overflow-x: auto; list-style: none; scrollbar-width: thin; }
+.aim-clip-queue li { min-width: min(220px,75vw); }
+.aim-clip-queue button { display: grid; width: 100%; min-height: 66px; padding: .65rem .75rem; border: 1px solid var(--line); border-radius: .4rem; background: #101820; color: #aab4c0; text-align: left; cursor: pointer; }
+.aim-clip-queue button[aria-pressed="true"] { border-color: var(--mint); background: #142822; }
+.aim-clip-queue button span,.aim-clip-queue button small { color: #718092; font: 650 .6rem/1.35 var(--font-mono); }
+.aim-clip-queue button strong { overflow: hidden; font-size: .76rem; text-overflow: ellipsis; white-space: nowrap; }
 .riot-ai-gate { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: -.45rem 0 1.25rem; padding: .9rem 1rem; border: 1px solid #664a25; border-radius: .6rem; background: linear-gradient(105deg, rgba(255,174,71,.09), rgba(13,17,24,.96)); }
 .riot-ai-gate.ready { border-color: rgba(120,230,194,.38); background: linear-gradient(105deg, rgba(120,230,194,.1), rgba(13,17,24,.96)); }
 .riot-ai-gate > div { display: flex; align-items: center; gap: .75rem; min-width: 0; }
@@ -74,6 +97,6 @@
 .review-mode-switch button:focus-visible, .aim-frame-tabs button:focus-visible, .aim-measurement summary:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
 @media (max-width: 1100px) { .tactics-coach-options { grid-template-columns: 1fr; } }
 @media (max-width: 850px) { .review-mode-bar { grid-template-columns: 1fr; gap: 1rem; } .tactics-coach-options { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 720px) { .tactics-coach-options { grid-template-columns: 1fr; } .riot-ai-gate { align-items: flex-start; flex-direction: column; } .riot-install-help { text-align: left; } }
+@media (max-width: 720px) { .tactics-coach-options { grid-template-columns: 1fr; } .riot-ai-gate { align-items: flex-start; flex-direction: column; } .riot-install-help { text-align: left; } .aim-autoclip-steps { grid-template-columns: 1fr; } .aim-autoclip-steps > div { min-height: 62px; } .aim-autoclip-steps > div:not(:last-child)::after { top: auto; right: 50%; bottom: -5px; transform: translateX(50%) rotate(135deg); } }
 @media (max-width: 620px) { .review-mode-switch { grid-template-columns: 1fr; } }
-@media (max-width: 520px) { .review-mode-switch button { padding: .7rem .5rem; gap: .4rem; } .review-mode-switch small { font-size: .8rem; } .aim-capture-controls, .round-capture-controls, .aim-measurement { margin: .7rem; padding: .8rem; } .round-marker-grid { grid-template-columns: 1fr; } .aim-frame-tabs { grid-template-columns: repeat(3, 1fr); } .aim-coordinates > div { grid-template-columns: repeat(2, 1fr); } .aim-seek-controls > button:last-child { width: 100%; } }
+@media (max-width: 520px) { .review-mode-switch button { padding: .7rem .5rem; gap: .4rem; } .review-mode-switch small { font-size: .8rem; } .aim-autoclip-heading { grid-template-columns: auto 1fr; } .aim-autoclip-heading > span:last-child { grid-column: 1 / -1; justify-self: start; } .aim-clip-queue { margin: .7rem .7rem 0; } .aim-capture-controls, .round-capture-controls, .aim-measurement { margin: .7rem; padding: .8rem; } .round-marker-grid { grid-template-columns: 1fr; } .aim-frame-tabs { grid-template-columns: repeat(3, 1fr); } .aim-coordinates > div { grid-template-columns: repeat(2, 1fr); } .aim-seek-controls > button:last-child { width: 100%; } }
