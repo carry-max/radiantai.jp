@@ -1,5 +1,5 @@
-.review-mode-bar { display: grid; grid-template-columns: minmax(300px, 1fr) 1fr; gap: 1.5rem; align-items: center; margin: 0 0 1.25rem; padding: 1rem; background: var(--ink-2); border: 1px solid var(--line); border-radius: .75rem; }
-.review-mode-switch { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; }
+.review-mode-bar { display: grid; grid-template-columns: 1fr; gap: 1rem; margin: 0 0 1.25rem; padding: 1rem; background: var(--ink-2); border: 1px solid var(--line); border-radius: .75rem; }
+.review-mode-switch { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: .5rem; }
 .review-mode-family { display: grid; align-content: start; gap: .45rem; }
 .review-mode-family > span { color: var(--mint); font-size: .68rem; font-weight: 750; letter-spacing: .1em; }
 .review-mode-options { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; height: 100%; }
@@ -11,7 +11,8 @@
 .review-mode-switch strong em { display: inline-flex; margin-left: .35rem; padding: .12rem .35rem; border-radius: 999px; background: rgba(120,230,194,.12); color: var(--mint); font: 750 .64rem/1.3 var(--font-mono); font-style: normal; white-space: nowrap; }
 .review-mode-switch small { display: block; font-size: .875rem; margin-top: .2rem; }
 .review-mode-switch svg { flex-shrink: 0; width: 23px; }
-.review-mode-price p { font-size: .875rem; line-height: 1.7; margin: .45rem 0; }
+.review-mode-price { display: grid; grid-template-columns: auto auto minmax(0,1fr); gap: .75rem 1rem; align-items: center; padding-top: .9rem; border-top: 1px solid var(--line); }
+.review-mode-price p { font-size: .875rem; line-height: 1.7; margin: 0; }
 .review-mode-price small { display: block; color: var(--muted-foreground); font-size: .8rem; line-height: 1.7; }
 .tactics-coach-options { grid-template-columns: 1fr 1fr; }
 .macro-data-flow { display: grid; grid-template-columns: minmax(240px,.85fr) minmax(0,1.15fr); gap: 1rem 1.5rem; margin: -.45rem 0 1.25rem; padding: 1.1rem; border: 1px solid rgba(120,230,194,.38); border-radius: .75rem; background: linear-gradient(120deg,rgba(120,230,194,.1),rgba(9,14,20,.98)); }
@@ -109,5 +110,5 @@
 @media (max-width: 1100px) { .review-mode-switch { grid-template-columns: 1fr; } }
 @media (max-width: 850px) { .review-mode-bar,.macro-data-flow { grid-template-columns: 1fr; gap: 1rem; } }
 @media (max-width: 720px) { .riot-ai-gate { align-items: flex-start; flex-direction: column; } .riot-install-help { text-align: left; } .aim-autoclip-steps,.macro-data-flow ol { grid-template-columns: 1fr; } .aim-autoclip-steps > div { min-height: 62px; } .aim-autoclip-steps > div:not(:last-child)::after { top: auto; right: 50%; bottom: -5px; transform: translateX(50%) rotate(135deg); } }
-@media (max-width: 620px) { .review-mode-switch { grid-template-columns: 1fr; } .tactics-coach-options { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .review-mode-switch { grid-template-columns: 1fr; } .tactics-coach-options { grid-template-columns: 1fr; } .review-mode-price { grid-template-columns: 1fr; } }
 @media (max-width: 520px) { .review-mode-switch button { padding: .7rem .5rem; gap: .4rem; } .review-mode-switch small { font-size: .8rem; } .aim-autoclip-heading { grid-template-columns: auto 1fr; } .aim-autoclip-heading > span:last-child { grid-column: 1 / -1; justify-self: start; } .aim-clip-queue { margin: .7rem .7rem 0; } .aim-capture-controls, .round-capture-controls, .aim-measurement { margin: .7rem; padding: .8rem; } .round-marker-grid { grid-template-columns: 1fr; } .aim-frame-tabs { grid-template-columns: repeat(3, 1fr); } .aim-coordinates > div { grid-template-columns: repeat(2, 1fr); } .aim-seek-controls > button:last-child { width: 100%; } }

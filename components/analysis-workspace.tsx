@@ -1270,9 +1270,9 @@ export function AnalysisWorkspace() {
 
         <section className="review-mode-bar" aria-label="解析モード">
           <div className="review-mode-switch" role="group" aria-label="目的を選ぶ">
-            <div className="review-mode-family tactics-coach-family"><span>立ち回りモード</span><div className="review-mode-options tactics-coach-options">
-              <button type="button" aria-pressed={reviewMode === "tactics" && tacticsCoach === "replay"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => selectTacticsCoach("replay")}><UploadCloud /><span><strong>リプレイを選ぶ <em>立ち回り枠</em></strong><small>自分で試合・場面を指定</small></span></button>
-              <button type="button" aria-pressed={reviewMode === "tactics" && tacticsCoach === "riot"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => selectTacticsCoach("riot")}><Zap /><span><strong>AIに任せる <em>最大50試合</em></strong><small>録画不要 · Riot APIから自動判断</small></span></button>
+            <div className="review-mode-family tactics-coach-family"><span>立ち回りモード · 共通50試合</span><div className="review-mode-options tactics-coach-options">
+              <button type="button" aria-pressed={reviewMode === "tactics" && tacticsCoach === "replay"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => selectTacticsCoach("replay")}><UploadCloud /><span><strong>リプレイを選ぶ <em>任意</em></strong><small>試合と場面を自分で指定</small></span></button>
+              <button type="button" aria-pressed={reviewMode === "tactics" && tacticsCoach === "riot"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => selectTacticsCoach("riot")}><Zap /><span><strong>AIに任せる <em>自動</em></strong><small>録画不要 · Riot APIから判断</small></span></button>
             </div></div>
             <div className="review-mode-family"><span>ミクロモード</span><div className="review-mode-options single">
               <button type="button" aria-pressed={reviewMode === "aim"} disabled={isCapturing || isAnalyzing || isDetectingDeaths} onClick={() => changeReviewMode("aim")}><Crosshair /><span><strong>ミクロ <em>5試合</em></strong><small>録画操作不要 · Overwolf</small></span></button>
