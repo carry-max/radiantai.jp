@@ -14,12 +14,9 @@ import {
   CreditCard,
   Crosshair,
   Download,
-  Eye,
-  EyeOff,
   Film,
   Gamepad2,
   History,
-  KeyRound,
   LoaderCircle,
   MapPinned,
   MonitorUp,
@@ -27,7 +24,6 @@ import {
   QrCode,
   RotateCcw,
   ScanLine,
-  Settings2,
   ShieldCheck,
   Sparkles,
   Target,
@@ -50,13 +46,6 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   NativeSelect,
@@ -363,7 +352,6 @@ export function AnalysisWorkspace() {
   const reviewEndRef = useRef<number | null>(null);
   const scanRunRef = useRef(0);
   const autoScannedUrlRef = useRef<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
   const [billingConfigured, setBillingConfigured] = useState(false);
   const [billingLoaded, setBillingLoaded] = useState(false);
@@ -381,9 +369,6 @@ export function AnalysisWorkspace() {
   const [checkoutPlan, setCheckoutPlan] = useState<BillingPlan | null>(null);
   const [entitlement, setEntitlement] = useState<BillingEntitlement | null>(null);
   const [billingNotice, setBillingNotice] = useState<{ message: string; tone: "neutral" | "success" | "error" } | null>(null);
-  const [apiKey, setApiKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
-  const [model, setModel] = useState("gpt-5.6-luna");
   const [fileName, setFileName] = useState("");
   const [aimClips, setAimClips] = useState<File[]>([]);
   const [matchId, setMatchId] = useState("");
@@ -1006,7 +991,7 @@ export function AnalysisWorkspace() {
       setStatus({ message: "先に解析する場面を切り出してください。", tone: "error" });
       return;
     }
-    if (!apiKey.trim() && !serviceReady) {
+    if (!serviceReady) {
       setStatus({ message: "AIレビューは準備中です。録画の切り出しとサンプルをお試しください。", tone: "neutral" });
       return;
     }
@@ -1038,7 +1023,7 @@ export function AnalysisWorkspace() {
       const response = await accountFetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...(apiKey.trim() ? { apiKey: apiKey.trim(), model } : {}), mode: reviewMode, tacticsCoach: reviewMode === "aim" ? undefined : tacticsCoach, clientKind: isWindowsApp && isWindows ? "windows-app" : "web", aimCrop, deathTimestamp, ...(reviewMode === "round" ? { roundStart } : {}), metadata: matchContext, previousMission, monthlyTracking: reviewMode === "tactics", recordingId: nextRecordingId, renewMonthly, frames: frames.map(({ label, dataUrl, time }) => ({ label, dataUrl, time })) }),
+        body: JSON.stringify({ mode: reviewMode, tacticsCoach: reviewMode === "aim" ? undefined : tacticsCoach, clientKind: isWindowsApp && isWindows ? "windows-app" : "web", aimCrop, deathTimestamp, ...(reviewMode === "round" ? { roundStart } : {}), metadata: matchContext, previousMission, monthlyTracking: reviewMode === "tactics", recordingId: nextRecordingId, renewMonthly, frames: frames.map(({ label, dataUrl, time }) => ({ label, dataUrl, time })) }),
       });
       const data = (await response.json()) as { ok?: boolean; error?: string; review?: Review; model?: string; monthly?: MonthlySummary; monthlyNotice?: string; xpAwarded?: number; monthlySaved?: boolean; analysisId?: string; cached?: boolean; growthNotice?: string };
       if (!response.ok || !data.ok || !data.review) throw new Error(data.error || "AI解析に失敗しました。");
@@ -1050,7 +1035,7 @@ export function AnalysisWorkspace() {
       setAnalysisId(data.analysisId || ""); setFeedbackNotice("");
       setGrowthRefreshKey(current => current + 1);
       if (data.cached) void reloadMonthly();
-      finishReview(data.review, data.model || model, data.cached ? "保存済みのレビューを表示しました。解析枠は消費しません。" : data.review.status === "insufficient" ? "根拠が不足しているため判定保留です。試合枠は消費していません。" : "AIレビューが完了しました。次の試合で直すことを1つ確認しましょう。");
+      finishReview(data.review, data.model || "AI", data.cached ? "保存済みのレビューを表示しました。解析枠は消費しません。" : data.review.status === "insufficient" ? "根拠が不足しているため判定保留です。試合枠は消費していません。" : "AIレビューが完了しました。次の試合で直すことを1つ確認しましょう。");
       if (data.growthNotice) setStatus({ message: `レビューは完了しました。${data.growthNotice}`, tone: "neutral" });
     } catch (error) {
       if (runId === analysisRunRef.current) setStatus({ message: error instanceof Error ? error.message : "AI解析に失敗しました。", tone: "error" });
@@ -1264,7 +1249,7 @@ export function AnalysisWorkspace() {
           <span className="local-state"><ShieldCheck aria-hidden="true" /> 録画は端末に保存</span>
           <Button asChild variant="outline" className="top-growth"><a href="/dashboard"><Activity /> ダッシュボード</a></Button>
           <Button asChild variant="outline" className="top-pricing"><a href="/pricing"><Wallet /> {entitlement?.status === "active" ? `残り${entitlement.remainingDays}日` : "料金・利用状況"}</a></Button>
-          <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)} className="top-settings"><Settings2 /> 解析について</Button>
+          <Button asChild variant="outline" className="top-settings"><Link href="/privacy"><ShieldCheck /> データの取り扱い</Link></Button>
         </div>
       </header>
 
@@ -1465,8 +1450,8 @@ export function AnalysisWorkspace() {
           <aside className="secondary-column">
             <section className="panel context-panel">
               <div className="allowance-box" aria-live="polite">
-                <strong>{apiKey.trim() ? "自分のAPIキーで解析 · 別料金" : !serviceReady ? "AIレビューは準備中" : currentAllowance ? `${currentAllowance.tier} · ${reviewMode === "aim" ? "ミクロ" : tacticsCoach === "riot" ? "立ち回り" : "Deep"} 残り ${currentAllowance.remaining} / ${currentAllowance.limit}試合` : "解析にはログインが必要です"}</strong>
-                <p>{apiKey.trim() ? "API料金はご自身のOpenAIアカウントに発生します。プランの試合枠は使いません。" : serviceReady ? `このモードでは1試合につき最大3解析。${recordingId ? `この録画は${currentScenes} / 3場面を解析済み。` : currentAllowance?.tier === "無料体験" ? "無料体験は全モード合計で1アカウント1試合です。" : "未使用枠は月2試合まで別モードへ自動振替できます。"}` : "録画の切り出しとサンプルは利用できます。購入・請求はありません。"}</p>
+                <strong>{!serviceReady ? "AIレビューは準備中" : currentAllowance ? `${currentAllowance.tier} · ${reviewMode === "aim" ? "ミクロ" : tacticsCoach === "riot" ? "立ち回り" : "Deep"} 残り ${currentAllowance.remaining} / ${currentAllowance.limit}試合` : "解析にはログインが必要です"}</strong>
+                <p>{serviceReady ? `このモードでは1試合につき最大3解析。${recordingId ? `この録画は${currentScenes} / 3場面を解析済み。` : currentAllowance?.tier === "無料体験" ? "無料体験は全モード合計で1アカウント1試合です。" : "未使用枠は月2試合まで別モードへ自動振替できます。"}` : "録画の切り出しとサンプルは利用できます。購入・請求はありません。"}</p>
                 {allowanceError ? <p role="alert">{allowanceError}</p> : null}
                 <Button variant="ghost" size="sm" onClick={() => void reloadAllowance()}><RotateCcw /> 利用状況を更新</Button>
                 {serviceReady && !signedIn ? <a href="/login" target="_top">ログインして無料体験</a> : null}
@@ -1490,12 +1475,12 @@ export function AnalysisWorkspace() {
               <div className={`status-line ${status.tone}`} role="status" aria-live="polite">
                 {status.tone === "error" ? <AlertTriangle /> : status.tone === "success" ? <CheckCircle2 /> : <Clock3 />}<span>{status.message}</span>
               </div>
-              <Button type="button" size="lg" disabled={!reviewReady || isAnalyzing || (reviewMode !== "aim" && tacticsCoach === "riot" && !riotReady) || (!apiKey.trim() && (!serviceReady || !signedIn || Boolean(allowanceError)))} onClick={() => void analyze()} className="analyze-button">
+              <Button type="button" size="lg" disabled={!reviewReady || isAnalyzing || (reviewMode !== "aim" && tacticsCoach === "riot" && !riotReady) || !serviceReady || !signedIn || Boolean(allowanceError)} onClick={() => void analyze()} className="analyze-button">
                 {isAnalyzing ? <LoaderCircle className="spin" /> : <Sparkles />}{isAnalyzing ? "AI解析中…" : reviewMode === "round" ? "このラウンドをレビュー" : "この場面の改善点を確認"}
               </Button>
               <Button type="button" variant="ghost" disabled={isAnalyzing} onClick={() => finishReview(demoReview(selectedTags[0], reviewMode), "demo", "デモレビューを表示しました。月間ミッション・XPは変更されません。")} className="demo-button"><Play /> サンプルレビューを見る</Button>
               {reviewMode === "aim" ? <p className="aim-result-note">Windowsアプリの30秒クリップをAIが確認し、ピーク方法・クロスヘア・照準修正・ストッピング・射撃制御を試合後に解析します。この画面の6枚確認は、細かい照準位置を見直す手動機能です。</p> : reviewMode === "round" ? <p className="aim-result-note">ラウンドレビューは初期配置から敗因までを確認します。画像間の通話や画面外の動きは断定せず、月間ミッションとXPの判定対象にはしません。</p> : null}
-              <p className="cost-note">{reviewMode === "aim" ? "自動クリップは選択した30秒動画をAIへ送信します。手動確認は最大6枚の画像だけをAIへ送ります。" : "最大6枚の画像・試合情報・練習課題をAIへ送ります。動画全体・音声は送りません。"}{apiKey.trim() ? "自分のAPIキーでの解析は別途API料金が発生します。" : "無料体験・有料プランの範囲内では追加料金はありません。"}</p>
+              <p className="cost-note">{reviewMode === "aim" ? "自動クリップは選択した30秒動画をAIへ送信します。手動確認は最大6枚の画像だけをAIへ送ります。" : "最大6枚の画像・試合情報・練習課題をAIへ送ります。動画全体・音声は送りません。"}無料体験・有料プランの範囲内では追加料金はありません。</p>
             </section>
 
             <section className="panel result-panel" ref={resultRef}>
@@ -1564,21 +1549,6 @@ export function AnalysisWorkspace() {
         <nav className="footer-links" aria-label="運営情報"><a href="/legal">販売条件・運営情報</a><a href="/privacy">データの取り扱い</a></nav>
       </main>
 
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="settings-dialog">
-          <DialogHeader><p className="eyebrow">AI CONNECTION</p><DialogTitle>解析とデータの取り扱い</DialogTitle><DialogDescription>通常の無料体験・有料プランはAPIキー不要です。立ち回りはRiot API → AI、ミクロはOverwolf → AIで試合後に解析します。</DialogDescription></DialogHeader>
-          <details className="personal-api"><summary>自分のAPIキーで試す（任意・別料金）</summary><p>無料体験・月額プランとは別の試用方法です。API料金はご自身のOpenAIアカウントに発生します。キーは保存せず、解析時だけこのサイトを経由してOpenAIへ送ります。</p><div className="settings-fields">
-            <label htmlFor="apiKey"><span>OpenAI APIキー</span></label>
-            <div className="key-field"><KeyRound /><Input id="apiKey" type={showKey ? "text" : "password"} value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk-..." autoComplete="off" spellCheck={false} /><Button type="button" variant="ghost" size="icon-sm" aria-label={showKey ? "APIキーを隠す" : "APIキーを表示"} onClick={() => setShowKey((current) => !current)}>{showKey ? <EyeOff /> : <Eye />}</Button></div>
-            <label htmlFor="model"><span>解析モデル</span></label>
-            <NativeSelect id="model" value={model} onChange={(event) => setModel(event.target.value)}><NativeSelectOption value="gpt-5.6-luna">AI 高速モデル（推奨・低コスト）</NativeSelectOption><NativeSelectOption value="gpt-5.6-sol">AI 高精度モデル</NativeSelectOption></NativeSelect>
-          </div>
-          </details>
-          <div className="privacy-box"><ShieldCheck /><div><strong>モードごとに必要なデータだけ送信</strong><p>立ち回りは試合データだけ、ミクロは自動保存した30秒クリップだけを送信します。解析回数と結果はアカウントに紐づけて保存します。</p></div></div>
-          <a href="/privacy">データの取り扱いを詳しく見る</a>
-          <div className="dialog-actions">{apiKey ? <Button type="button" variant="outline" onClick={() => { setApiKey(""); setShowKey(false); }}><RotateCcw /> キーを消去</Button> : null}<Button type="button" onClick={() => setSettingsOpen(false)}>閉じる</Button></div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

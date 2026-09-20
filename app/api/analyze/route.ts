@@ -149,8 +149,6 @@ type AnalyzeBody = {
   tacticsCoach?: unknown;
   clientKind?: unknown;
   aimCrop?: unknown;
-  apiKey?: unknown;
-  model?: unknown;
   metadata?: unknown;
   frames?: unknown;
   previousMission?: unknown;
@@ -230,16 +228,6 @@ function validateReview(value: unknown, mode: ReviewMode) {
   return parsed.data;
 }
 
-function friendlyApiError(status: number, value: unknown) {
-  if (status === 401) return "APIキーを確認してください。ChatGPT Plusとは別にAPI利用設定が必要です。";
-  if (status === 429) return "APIの利用上限またはレート制限に達しました。少し待って再試行してください。";
-  const body = value && typeof value === "object" ? value as Record<string, unknown> : {};
-  const error = body.error && typeof body.error === "object" ? body.error as Record<string, unknown> : {};
-  const detail = cleanText(error.message, 220);
-  if (status === 400) return detail ? `APIリクエストを確認してください。${detail}` : "APIリクエストを確認してください。";
-  return detail ? `OpenAI APIでエラーが発生しました（${status}）。${detail}` : `OpenAI APIでエラーが発生しました（${status}）。`;
-}
-
 function json(payload: Record<string, unknown>, status = 200) {
   return Response.json(payload, {
     status,
@@ -297,9 +285,8 @@ async function postHandler(request: Request) {
       if (body.clientKind !== "windows-app") throw new AccessError("Riot AIはWindowsにインストールしたRadiant AIアプリから利用してください。", 403);
       if (!await getRiotConnection(getMissionDb(), user.id)) throw new AccessError("アカウント画面でRiotアカウントを連携してから利用してください。", 403);
     }
-    const personalKey = cleanText(body.apiKey, 300);
-    const apiKey = personalKey || config.apiKey;
-    const model = personalKey ? cleanText(body.model, 60) || "gpt-5.6-luna" : config.model;
+    const apiKey = config.apiKey;
+    const model = config.model;
     const backendConfigured = Boolean(config.videoBackendUrl && config.videoBackendToken);
     if (!apiKey && !backendConfigured) return json({ ok: false, error: "AIレビューは現在準備中です。録画の切り出しとサンプルレビューをご利用いただけます。" }, 503);
     if (!ALLOWED_MODELS.has(model)) throw new RequestError("選択されたモデルは利用できません。");
@@ -309,23 +296,21 @@ async function postHandler(request: Request) {
     const metadata = cleanMetadata(body.metadata);
     const previousMission = mode === "tactics" ? cleanText(body.previousMission, 320) : "";
     const recordingId = cleanText(body.recordingId, 64);
-    if (!personalKey) {
-      if (!user) return json({ ok: false, error: "無料体験・プランの解析にはログインが必要です。" }, 401);
-      if (!/^[a-f0-9]{64}$/.test(recordingId)) throw new RequestError("録画の識別情報を準備できませんでした。動画を選び直してください。");
-      const deathTime = body.deathTimestamp;
-      if (typeof deathTime !== "number" || !Number.isFinite(deathTime) || deathTime < 0 || deathTime > 3600) throw new RequestError("場面の時刻を確認してください。");
-      if (frames.some(frame => frame.time === null)) throw new RequestError("フレームの時刻を確認できませんでした。もう一度切り出してください。");
-      const roundStart = mode === "round" && typeof body.roundStart === "number" ? body.roundStart : 0;
-      const sceneKey = analysisSceneKey(mode, deathTime, aimCrop, roundStart);
-      const result = await reserveAnalysis(getMissionDb(), user.id, await getEntitlement(user.id), recordingId, tacticsCoach ? `${tacticsCoach}:${sceneKey}` : sceneKey, Date.now(), accessKindForReview(mode, tacticsCoach));
-      reservation = result.reservation;
-      if (result.cached) {
-        const cachedRatings = verifiedSkillRatings(result.cached.review?.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), result.cached.review?.status === "ok", mode);
-        let growthNotice = "";
-        try { await saveAiGrowth(getMissionDb(), user.id, result.cached.analysisId, cachedRatings, `${metadata.map || "マップ未設定"} / ${metadata.timestamp || "レビュー"}`); }
-        catch { growthNotice = "成長グラフへの反映を確認できませんでした。同じ場面を再表示してお試しください。"; }
-        return json({ ...result.cached, growthNotice });
-      }
+    if (!user) return json({ ok: false, error: "無料体験・プランの解析にはログインが必要です。" }, 401);
+    if (!/^[a-f0-9]{64}$/.test(recordingId)) throw new RequestError("録画の識別情報を準備できませんでした。動画を選び直してください。");
+    const deathTime = body.deathTimestamp;
+    if (typeof deathTime !== "number" || !Number.isFinite(deathTime) || deathTime < 0 || deathTime > 3600) throw new RequestError("場面の時刻を確認してください。");
+    if (frames.some(frame => frame.time === null)) throw new RequestError("フレームの時刻を確認できませんでした。もう一度切り出してください。");
+    const roundStart = mode === "round" && typeof body.roundStart === "number" ? body.roundStart : 0;
+    const sceneKey = analysisSceneKey(mode, deathTime, aimCrop, roundStart);
+    const result = await reserveAnalysis(getMissionDb(), user.id, await getEntitlement(user.id), recordingId, tacticsCoach ? `${tacticsCoach}:${sceneKey}` : sceneKey, Date.now(), accessKindForReview(mode, tacticsCoach));
+    reservation = result.reservation;
+    if (result.cached) {
+      const cachedRatings = verifiedSkillRatings(result.cached.review?.skill_assessments, frames.flatMap(frame => frame.time === null ? [] : [frame.time]), result.cached.review?.status === "ok", mode);
+      let growthNotice = "";
+      try { await saveAiGrowth(getMissionDb(), user.id, result.cached.analysisId, cachedRatings, `${metadata.map || "マップ未設定"} / ${metadata.timestamp || "レビュー"}`); }
+      catch { growthNotice = "成長グラフへの反映を確認できませんでした。同じ場面を再表示してお試しください。"; }
+      return json({ ...result.cached, growthNotice });
     }
     let monthlyContext: MonthlyContext | null = null;
     let missionDb: MissionDatabase | null = null;
@@ -391,12 +376,11 @@ async function postHandler(request: Request) {
       backendUrl: config.videoBackendUrl,
       backendToken: config.videoBackendToken,
       payload: upstreamPayload,
-      // Personal API keys stay on Vercel. Paid/site-funded analysis runs on Railway.
-      useBackend: !personalKey,
+      useBackend: true,
     });
 
     const upstreamBody = await upstream.json() as Record<string, unknown>;
-    if (!upstream.ok) return json({ ok: false, error: personalKey ? friendlyApiError(upstream.status, upstreamBody) : "AIサービスへの接続に失敗しました。試合枠は消費していません。時間をおいて再度お試しください。" }, 502);
+    if (!upstream.ok) return json({ ok: false, error: "AIサービスへの接続に失敗しました。試合枠は消費していません。時間をおいて再度お試しください。" }, 502);
 
     const review = validateReview(JSON.parse(extractOutputText(upstreamBody)), mode);
     review.mode = mode;
@@ -433,7 +417,7 @@ async function postHandler(request: Request) {
         monthlyResult = { monthlySaved: false, xpAwarded: 0, monthlyNotice: "レビューは完了しましたが、月間ミッションを保存できませんでした。進捗を再読み込みして確認してください。" };
       }
     }
-    const growthAnalysisId = reservation?.id || (user && /^[a-f0-9]{64}$/.test(recordingId) ? `personal:${recordingId}:${tacticsCoach ? `${tacticsCoach}:` : ""}${analysisSceneKey(mode, Number(body.deathTimestamp) || 0, aimCrop, mode === "round" && typeof body.roundStart === "number" ? body.roundStart : 0)}` : null);
+    const growthAnalysisId = reservation?.id || null;
     const usage = upstreamBody.usage && typeof upstreamBody.usage === "object" ? upstreamBody.usage as Record<string, unknown> : {};
     const payload = { ok: true, review, model: cleanText(upstreamBody.model, 80) || model, usage: { ...usage, review_mode: mode, tactics_coach: tacticsCoach, input_images: frames.length }, analysisId: reservation?.id || null, growthNotice: "", ...monthlyResult };
     if (reservation) {
@@ -452,7 +436,7 @@ async function postHandler(request: Request) {
     if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
       return json({ ok: false, error: "AI解析が時間切れになりました。もう一度お試しください。" }, 504);
     }
-    console.error("analysis failed", error instanceof Error ? error.name : "unknown error");
+    console.error("analysis failed", error instanceof Error ? `${error.name}: ${error.message}` : "unknown error");
     return json({ ok: false, error: "AI解析を完了できませんでした。試合枠は消費していません。時間をおいて再度お試しください。" }, 502);
   } finally {
     if (reservation) await failAnalysis(reservation).catch(() => console.error("analysis reservation could not be released"));

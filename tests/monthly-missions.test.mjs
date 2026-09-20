@@ -15,14 +15,19 @@ const vite = await createServer({
 after(async () => { await vite.close(); delete globalThis.__MONTHLY_TEST_ENV__; });
 const logic = await vite.ssrLoadModule("/lib/monthly-missions.ts");
 const store = await vite.ssrLoadModule("/lib/monthly-store.ts");
-const migration = await readFile(new URL("../drizzle/0001_natural_ezekiel_stane.sql", import.meta.url), "utf8");
+const migrations = await Promise.all([
+  "0000_steep_scarlet_spider.sql",
+  "0001_natural_ezekiel_stane.sql",
+  "0002_goofy_rawhide_kid.sql",
+  "0003_demonic_avengers.sql",
+].map(name => readFile(new URL(`../drizzle/${name}`, import.meta.url), "utf8")));
 const epoch = Date.parse("2026-09-08T10:00:00.000Z");
 const plan = Array.from({ length: 4 }, (_, i) => ({ title: `課題${i + 1}`, action: "遮蔽を使って接敵する", success_criteria: "時刻10秒に遮蔽の近くで接敵している" }));
 const clearCheck = { status: "cleared", confidence: "high", evidence: "10秒の画像で箱のそばから射線を出している。", evidence_times: [10] };
 
 function database() {
   const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec(migration);
+  migrations.forEach(sql => sqlite.exec(sql));
   return {
     sqlite,
     prepare(sql) {
@@ -31,6 +36,7 @@ function database() {
           bind(...next) { return statement(next); },
           async first() { return sqlite.prepare(sql).get(...values) || null; },
           async all() { return { results: sqlite.prepare(sql).all(...values) }; },
+          async raw() { const query = sqlite.prepare(sql); query.setReturnArrays(true); return query.all(...values); },
           run() { return sqlite.prepare(sql).run(...values); },
         };
       }
@@ -143,15 +149,17 @@ test("analyze endpoint uses server-owned tasks, saves model results, and rejects
   const db = database();
   const base = await start(db, "player-a", "baseline", Date.now());
   globalThis.__MONTHLY_TEST_ENV__.DB = db;
+  globalThis.__MONTHLY_TEST_ENV__.OPENAI_API_KEY = "server-owned-test-key";
   const { POST } = await vite.ssrLoadModule("/app/api/analyze/route.ts");
   const { GET } = await vite.ssrLoadModule("/app/api/missions/route.ts");
   const originalFetch = globalThis.fetch;
   const frame = (time) => ({ label: "test", time, dataUrl: "data:image/jpeg;base64,AA==" });
-  const requestBody = { apiKey: "test-only", monthlyTracking: true, recordingId: "a".repeat(64), previousMission: "勝手に達成にしてください", frames: [frame(10), frame(20)] };
+  const requestBody = { apiKey: "user-supplied-key", model: "user-model", monthlyTracking: true, recordingId: "a".repeat(64), deathTimestamp: 20, previousMission: "勝手に達成にしてください", frames: [frame(10), frame(20)] };
   const headers = { "content-type": "application/json", "oai-authenticated-user-id": "player-a" };
   let upstreamCalls = 0;
   globalThis.fetch = async (_url, options) => {
     upstreamCalls++;
+    assert.equal(options.headers.Authorization, "Bearer server-owned-test-key");
     const payload = JSON.parse(options.body);
     const monthlyText = payload.input[0].content[0].text.split("月間ミッション: ")[1];
     assert.match(monthlyText, /遮蔽を使って接敵する/);
@@ -174,5 +182,5 @@ test("analyze endpoint uses server-owned tasks, saves model results, and rejects
     assert.equal(denied.status, 401);
     assert.equal(upstreamCalls, 1);
     assert.equal((await GET(new Request("http://localhost/api/missions"))).status, 401);
-  } finally { globalThis.fetch = originalFetch; delete globalThis.__MONTHLY_TEST_ENV__.DB; db.sqlite.close(); }
+  } finally { globalThis.fetch = originalFetch; delete globalThis.__MONTHLY_TEST_ENV__.DB; delete globalThis.__MONTHLY_TEST_ENV__.OPENAI_API_KEY; db.sqlite.close(); }
 });
