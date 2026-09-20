@@ -1,5 +1,17 @@
 # RadiantAI — Overwolf App Proposal
 
+## Submission record
+
+Submitted successfully through the Overwolf app-idea form on 2026-09-20 (Japan time). The submitted selections were:
+
+- Framework: `ow-electron`
+- Business model: `None`
+- Country: `Japan`
+- Category: `Guides & Trainers`
+- Supported game: `VALORANT`
+
+Overwolf confirmed receipt on screen and will send the next instructions by email.
+
 ## Form-ready English copy
 
 ### App name

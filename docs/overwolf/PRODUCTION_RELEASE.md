@@ -1,14 +1,20 @@
 # Overwolf production release
 
+## Current status
+
+- App proposal submitted successfully on 2026-09-20 (Japan time).
+- Submitted as `RadiantAI`, `ow-electron`, `Guides & Trainers`, `VALORANT`, with business model `None` for the initial free public beta.
+- Overwolf confirmed receipt and states that follow-up information is normally sent by email within two days. Check spam and contact Overwolf support if no message arrives after that window.
+- DevRel approval, app whitelisting, Developer Console access, App UID, API key, and Build Key are still pending.
+
 ## External approvals required
 
-1. Submit `APP_PROPOSAL.md` through the Overwolf app-idea form.
-2. Receive Overwolf DevRel approval and app whitelisting.
-3. Complete Riot Games' third-party application approval for the public VALORANT app. Overwolf requires this before publication even when the Riot API is not used.
-4. Obtain Developer Console access, the App UID, API key, and Build Key.
-5. Obtain a Windows code-signing certificate from a trusted CA such as DigiCert or Sectigo. The certificate owner must match the real publisher identity.
-6. Complete QA using `QA_PLAN.md` and submit the signed installer to the Testing channel.
-7. Resolve QA feedback, promote the approved build to Production, and start with a limited rollout.
+1. Receive Overwolf DevRel approval and app whitelisting.
+2. Complete Riot Games' third-party application approval for the public VALORANT app. Overwolf requires this before publication even when the Riot API is not used.
+3. Obtain Developer Console access, the App UID, API key, and Build Key.
+4. Obtain a Windows code-signing certificate from a trusted CA such as DigiCert or Sectigo. The certificate owner must match the real publisher identity.
+5. Complete QA using `QA_PLAN.md` and submit the signed installer to the Testing channel.
+6. Resolve QA feedback, promote the approved build to Production, and start with a limited rollout.
 
 ## Secret environment variables
 
