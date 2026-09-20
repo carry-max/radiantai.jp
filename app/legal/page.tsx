@@ -17,6 +17,6 @@ export default function LegalPage() {
       <dt>返金</dt><dd>お客様都合の購入後返金・未使用枠の日割り返金は原則ありません。事業者都合で契約期間内にサービスを提供できなかった場合は、未提供分の返金を含め速やかに個別対応します。法令に基づく権利を制限しません。</dd>
       <dt>動作環境</dt><dd>インターネット接続と、Overwolfに対応したWindows版Radiant AIアプリが必要です。Deepで録画を指定する場合、MP4・WebM・MOVはブラウザが再生できる形式に限ります。</dd>
     </dl><h2>サービスの位置づけ</h2><p>試合後の振り返りを支援するAIサービスです。ランク上昇や勝率向上を保証するものではありません。ゲームへの接続・操作や、試合中の助言は行いません。Riot Gamesの公式サービスではなく、Riot Gamesによる推奨・保証を受けたものではありません。</p>
-    <p><Link href="/privacy">データの取り扱い</Link></p>
+    <p><Link href="/terms">利用規約</Link>　<Link href="/privacy">データの取り扱い</Link></p>
   </main>;
 }

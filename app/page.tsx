@@ -13,6 +13,6 @@ export default function HomePage() {
       <section className="landing-modes"><article><Target /><div><small>TACTICS</small><h2>立ち回り分析</h2><p>録画なしで最大50試合。Riot API → AIで判断傾向を分析します。</p><a href="/analysis">立ち回りを分析 <ArrowRight /></a></div></article><article><Crosshair /><div><small>MICRO</small><h2>ミクロ分析</h2><p>録画操作なし。Overwolf → AIでデス前後の撃ち合いを分析します。</p><a href="/analysis">ミクロを分析 <ArrowRight /></a></div></article><article className="landing-guide-card"><BookOpen /><div><small>DEEP</small><h2>Deep分析</h2><p>重要な試合や場面を選び、配置・情報・ローテ・敗因を詳しく確認します。</p><a href="/analysis">Deepを使う <ArrowRight /></a></div></article></section>
       <section className="landing-price"><div><p className="eyebrow">SIMPLE PRICING</p><h2>月額900円。</h2><p>立ち回り50試合・ミクロ5試合・Deep 2試合。未使用分は月2試合まで別モードへ振替できます。</p></div><ul><li><CheckCircle2 /> AI解析費用込み</li><li><CheckCircle2 /> 保存済み結果の再表示は枠を消費しない</li><li><CheckCircle2 /> 無料体験から自動課金なし</li></ul><a className="portal-secondary" href="/pricing">料金を詳しく見る <ArrowRight /></a></section>
     </main>
-    <footer className="portal-footer"><span>RADIANT REVIEW</span><nav><a href="/privacy">データの取り扱い</a><a href="/legal">販売条件・運営情報</a></nav></footer>
+    <footer className="portal-footer"><span>RADIANT REVIEW</span><nav><a href="/terms">利用規約</a><a href="/privacy">データの取り扱い</a><a href="/legal">販売条件・運営情報</a></nav></footer>
   </div>;
 }

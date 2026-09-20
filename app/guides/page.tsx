@@ -42,7 +42,7 @@ export default function GuidesPage() {
         <p className="guide-source-note">順位は、各ランク帯で優先したい課題との関連性と、次の試合で実践しやすい学習順を基準にしています。</p>
         <CommunityVideoRankings />
       </main>
-      <footer className="portal-footer"><span>RADIANT REVIEW</span><nav><a href="/privacy">データの取り扱い</a><a href="/legal">販売条件・運営情報</a></nav></footer>
+      <footer className="portal-footer"><span>RADIANT REVIEW</span><nav><a href="/terms">利用規約</a><a href="/privacy">データの取り扱い</a><a href="/legal">販売条件・運営情報</a></nav></footer>
     </div>
   );
 }

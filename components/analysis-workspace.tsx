@@ -1553,7 +1553,7 @@ export function AnalysisWorkspace() {
         </section>
 
         <footer><span><ShieldCheck /> 試合後レビュー専用</span><p>Overwolfはdeathイベントを保存トリガーにだけ使用し、試合中の助言は表示しません。AIの提案は試合後に確認してください。</p></footer>
-        <nav className="footer-links" aria-label="運営情報"><a href="/legal">販売条件・運営情報</a><a href="/privacy">データの取り扱い</a></nav>
+        <nav className="footer-links" aria-label="運営情報"><a href="/terms">利用規約</a><a href="/legal">販売条件・運営情報</a><a href="/privacy">データの取り扱い</a></nav>
       </main>
 
     </div>
